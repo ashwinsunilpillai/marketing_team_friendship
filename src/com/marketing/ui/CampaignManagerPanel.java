@@ -3,7 +3,6 @@ package com.marketing.ui;
 import com.marketing.entity.Campaign;
 import com.marketing.exception.*;
 import com.marketing.facade.CampaignFacade;
-import com.marketing.facade.SegmentManager;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -19,7 +18,6 @@ import java.util.List;
  */
 public class CampaignManagerPanel extends JPanel {
     private CampaignFacade campaignFacade;
-    private SegmentManager segmentManager;
     
     // UI Components
     private JTable campaignTable;
@@ -42,7 +40,6 @@ public class CampaignManagerPanel extends JPanel {
      */
     public CampaignManagerPanel() {
         this.campaignFacade = new CampaignFacade();
-        this.segmentManager = new SegmentManager();
         
         initializeUI();
         loadCampaigns();
