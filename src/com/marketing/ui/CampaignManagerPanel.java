@@ -3,7 +3,6 @@ package com.marketing.ui;
 import com.marketing.entity.Campaign;
 import com.marketing.exception.*;
 import com.marketing.facade.CampaignFacade;
-import com.marketing.facade.SegmentManager;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -19,7 +18,6 @@ import java.util.List;
  */
 public class CampaignManagerPanel extends JPanel {
     private CampaignFacade campaignFacade;
-    private SegmentManager segmentManager;
     
     // UI Components
     private JTable campaignTable;
@@ -42,7 +40,6 @@ public class CampaignManagerPanel extends JPanel {
      */
     public CampaignManagerPanel() {
         this.campaignFacade = new CampaignFacade();
-        this.segmentManager = new SegmentManager();
         
         initializeUI();
         loadCampaigns();
@@ -304,5 +301,16 @@ public class CampaignManagerPanel extends JPanel {
         descriptionField.setText("");
         selectedCampaignId = -1;
         campaignTable.clearSelection();
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Campaign Manager");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setContentPane(new CampaignManagerPanel());
+            frame.setSize(1000, 600);
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
     }
 }
