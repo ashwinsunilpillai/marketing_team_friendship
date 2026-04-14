@@ -302,4 +302,15 @@ public class CampaignManagerPanel extends JPanel {
         selectedCampaignId = -1;
         campaignTable.clearSelection();
     }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = new JFrame("Campaign Manager");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            frame.setContentPane(new CampaignManagerPanel());
+            frame.setSize(1000, 600);
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+        });
+    }
 }
