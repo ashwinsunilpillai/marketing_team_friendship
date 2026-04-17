@@ -17,7 +17,7 @@ public class DBUtil {
     // Database configuration - adjust these based on your setup
     private static final String DB_URL = "jdbc:mysql://localhost:3306/marketing_erp";
     private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "Ashwinpillai4$";
+    private static final String DB_PASSWORD = "ROOTPASSWORD";
     private static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
     
     /**
