@@ -50,57 +50,80 @@ public class CampaignManagerPanel extends JPanel {
      */
     private void initializeUI() {
         setLayout(new BorderLayout(10, 10));
-        setBorder(BorderFactory.createTitledBorder("Campaign Manager"));
+        setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        setBackground(new Color(245, 247, 250));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+        JLabel title = new JLabel("Campaign Manager");
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
+        JLabel subtitle = new JLabel("Create, update, and monitor marketing campaigns");
+        subtitle.setForeground(new Color(90, 98, 110));
+        JPanel textBlock = new JPanel(new BorderLayout());
+        textBlock.setOpaque(false);
+        textBlock.add(title, BorderLayout.NORTH);
+        textBlock.add(subtitle, BorderLayout.SOUTH);
+        header.add(textBlock, BorderLayout.WEST);
+        add(header, BorderLayout.NORTH);
         
+        JPanel contentPanel = new JPanel(new BorderLayout(10, 10));
+        contentPanel.setOpaque(false);
+
         // Top panel - Input fields
         JPanel inputPanel = createInputPanel();
-        add(inputPanel, BorderLayout.NORTH);
+        contentPanel.add(inputPanel, BorderLayout.NORTH);
         
         // Center panel - Table
         JPanel tablePanel = createTablePanel();
-        add(tablePanel, BorderLayout.CENTER);
+        contentPanel.add(tablePanel, BorderLayout.CENTER);
         
         // Button panel
         JPanel buttonPanel = createButtonPanel();
-        add(buttonPanel, BorderLayout.SOUTH);
+        contentPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        add(contentPanel, BorderLayout.CENTER);
     }
     
     /**
      * Creates the input panel for campaign details
      */
     private JPanel createInputPanel() {
-        JPanel panel = new JPanel(new GridLayout(4, 4, 5, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("Campaign Details"));
+        JPanel panel = new JPanel(new GridLayout(4, 4, 8, 8));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder("Campaign Details"),
+            BorderFactory.createEmptyBorder(6, 6, 6, 6)
+        ));
+        panel.setBackground(Color.WHITE);
         
         // Row 1
-        panel.add(new JLabel("Campaign Name:"));
+        panel.add(styledLabel("Campaign Name"));
         campaignNameField = new JTextField();
         panel.add(campaignNameField);
         
-        panel.add(new JLabel("Budget:"));
+        panel.add(styledLabel("Budget"));
         budgetField = new JTextField();
         panel.add(budgetField);
         
         // Row 2
-        panel.add(new JLabel("Start Date:"));
+        panel.add(styledLabel("Start Date"));
         startDateSpinner = new JSpinner(new SpinnerDateModel());
         panel.add(startDateSpinner);
         
-        panel.add(new JLabel("End Date:"));
+        panel.add(styledLabel("End Date"));
         endDateSpinner = new JSpinner(new SpinnerDateModel());
         panel.add(endDateSpinner);
         
         // Row 3
-        panel.add(new JLabel("Status:"));
+        panel.add(styledLabel("Status"));
         statusCombo = new JComboBox<>(new String[]{"ACTIVE", "PAUSED", "COMPLETED"});
         panel.add(statusCombo);
         
-        panel.add(new JLabel("Segment ID:"));
+        panel.add(styledLabel("Segment ID"));
         segmentIdField = new JTextField();
         panel.add(segmentIdField);
         
         // Row 4
-        panel.add(new JLabel("Description:"));
+        panel.add(styledLabel("Description"));
         descriptionField = new JTextField();
         panel.add(descriptionField);
         
@@ -112,7 +135,11 @@ public class CampaignManagerPanel extends JPanel {
      */
     private JPanel createTablePanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("Campaigns"));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder("Campaign Overview"),
+            BorderFactory.createEmptyBorder(6, 6, 6, 6)
+        ));
+        panel.setBackground(Color.WHITE);
         
         // Create table with columns
         String[] columns = {"ID", "Name", "Start Date", "End Date", "Budget", "Status", "Segment ID"};
@@ -124,6 +151,7 @@ public class CampaignManagerPanel extends JPanel {
         };
         
         campaignTable = new JTable(tableModel);
+        campaignTable.setRowHeight(24);
         campaignTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         campaignTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
@@ -142,6 +170,7 @@ public class CampaignManagerPanel extends JPanel {
      */
     private JPanel createButtonPanel() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
+        panel.setBackground(new Color(245, 247, 250));
         
         createButton = new JButton("Create");
         createButton.addActionListener(e -> handleCreate());
@@ -160,6 +189,12 @@ public class CampaignManagerPanel extends JPanel {
         panel.add(refreshButton);
         
         return panel;
+    }
+
+    private JLabel styledLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(label.getFont().deriveFont(Font.BOLD));
+        return label;
     }
     
     /**
