@@ -7,19 +7,20 @@ import java.sql.SQLException;
 /**
  * DBUtil - Singleton pattern
  * Manages database connection pool for the Marketing ERP subsystem.
- * Follows the Singleton creational pattern to ensure one shared connection source.
+ * Follows the Singleton creational pattern to ensure one shared connection
+ * source.
  * GRASP: Information Expert (knows how to manage DB connections)
  */
 public class DBUtil {
     private static DBUtil instance;
     private Connection connection;
-    
+
     // Database configuration - adjust these based on your setup
     private static final String DB_URL = "jdbc:mysql://localhost:3306/marketing_erp";
     private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "Ashwinpillai4$";
+    private static final String DB_PASSWORD = "password";
     private static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
-    
+
     /**
      * Private constructor to prevent instantiation
      */
@@ -34,9 +35,10 @@ public class DBUtil {
             System.err.println("Database connection failed: " + e.getMessage());
         }
     }
-    
+
     /**
      * Returns the singleton instance of DBUtil
+     * 
      * @return DBUtil singleton instance
      */
     public static synchronized DBUtil getInstance() {
@@ -45,9 +47,10 @@ public class DBUtil {
         }
         return instance;
     }
-    
+
     /**
      * Gets the database connection
+     * 
      * @return Connection object
      */
     public Connection getConnection() {
@@ -60,7 +63,7 @@ public class DBUtil {
         }
         return connection;
     }
-    
+
     /**
      * Closes the database connection
      */
