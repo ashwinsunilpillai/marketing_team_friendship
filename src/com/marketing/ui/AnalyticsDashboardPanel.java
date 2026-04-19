@@ -6,11 +6,10 @@ import com.marketing.m3.analytics.AnalyticsEngine;
 import com.marketing.m3.analytics.AnalyticsObserver;
 import com.marketing.m3.analytics.AnalyticsSummary;
 import com.marketing.m3.analytics.CampaignAnalyticsItem;
-import com.marketing.m3.reporting.Report;
-import com.marketing.m3.reporting.ReportBuilder;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.text.DecimalFormat;
@@ -24,151 +23,190 @@ public class AnalyticsDashboardPanel extends JPanel implements AnalyticsObserver
     private final DecimalFormat decimalFormat = new DecimalFormat("0.00");
 
     private final Map<String, JLabel> kpiValueLabels = new LinkedHashMap<>();
-    private final DefaultTableModel tableModel;
-    private final JTextField reportNameField = new JTextField("Weekly Performance Report");
-    private final JTextField ctrTargetField = new JTextField("2.5");
-    private final JTextField roiTargetField = new JTextField("15");
-    private final JTextArea reportArea = new JTextArea();
-    private final MetricsChartPanel chartPanel = new MetricsChartPanel();
+    private final DefaultTableModel spendByTypeModel;
+    private final DefaultTableModel campaignPerfModel;
 
     private AnalyticsSummary currentSummary;
 
+    // Auto-refresh fields
+    private Timer autoRefreshTimer;
+    private boolean isAutoRefreshActive = false;
+    private JLabel autoRefreshStatusLabel;
+    private JButton autoRefreshToggleButton;
+    private static final int AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+
     public AnalyticsDashboardPanel() {
         setLayout(new BorderLayout(12, 12));
-        setBorder(new EmptyBorder(12, 12, 12, 12));
+        setBorder(new EmptyBorder(16, 16, 16, 16));
         setBackground(new Color(245, 247, 250));
 
         analyticsEngine.attach(this);
 
-        add(createHeader(), BorderLayout.NORTH);
+        // North panel - header and KPI cards
+        JPanel northPanel = new JPanel(new BorderLayout(12, 12));
+        northPanel.setOpaque(false);
+        northPanel.add(createHeader(), BorderLayout.NORTH);
+        northPanel.add(createKpiPanel(), BorderLayout.SOUTH);
 
+        add(northPanel, BorderLayout.NORTH);
+
+        // Main content with two tables
         JPanel content = new JPanel(new BorderLayout(12, 12));
         content.setOpaque(false);
-        content.add(createKpiWidgets(), BorderLayout.NORTH);
 
-        String[] columns = {"Campaign", "Impressions", "Clicks", "Conversions", "CTR %", "ROI %"};
-        tableModel = new DefaultTableModel(columns, 0) {
+        spendByTypeModel = new DefaultTableModel(new String[] { "Campaign Type", "Total Spend", "Campaigns" }, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
         };
 
-        JSplitPane dataSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
-                createCampaignTablePanel(),
-                createChartPanel());
-        dataSplit.setResizeWeight(0.62);
-        dataSplit.setBorder(null);
+        campaignPerfModel = new DefaultTableModel(
+                new String[] { "Campaign", "Type", "Status", "Budget", "Spent", "Variance", "Leads", "Cost/Lead",
+                        "ROI %" },
+                0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
 
-        content.add(dataSplit, BorderLayout.CENTER);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+                createSpendByTypePanel(),
+                createCampaignPerformancePanel());
+        splitPane.setResizeWeight(0.4);
+        splitPane.setBorder(null);
+
+        content.add(splitPane, BorderLayout.CENTER);
         add(content, BorderLayout.CENTER);
-        add(createReportPanel(), BorderLayout.SOUTH);
 
         refreshAnalytics();
     }
 
     private JComponent createHeader() {
-        JPanel header = new JPanel(new BorderLayout(8, 8));
+        JPanel header = new JPanel(new BorderLayout(0, 15));
         header.setOpaque(false);
 
-        JLabel title = new JLabel("Analytics Dashboard");
-        title.setFont(title.getFont().deriveFont(Font.BOLD, 20f));
+        JLabel title = new JLabel("Analytics");
+        title.setFont(new Font("SansSerif", Font.BOLD, 24));
+        title.setForeground(new Color(33, 33, 33));
 
-        JLabel subtitle = new JLabel("Live campaign KPIs, trends, and report generation");
-        subtitle.setForeground(new Color(90, 98, 110));
-
-        JPanel text = new JPanel(new BorderLayout());
-        text.setOpaque(false);
-        text.add(title, BorderLayout.NORTH);
-        text.add(subtitle, BorderLayout.SOUTH);
-
-        JButton refreshButton = new JButton("Refresh Metrics");
-        refreshButton.setFocusPainted(false);
-        refreshButton.addActionListener(e -> refreshAnalytics());
-
-        header.add(text, BorderLayout.WEST);
-        header.add(refreshButton, BorderLayout.EAST);
+        header.add(title, BorderLayout.WEST);
         return header;
     }
 
-    private JComponent createKpiWidgets() {
-        JPanel kpiPanel = new JPanel(new GridLayout(1, 6, 10, 10));
-        kpiPanel.setOpaque(false);
+    private JComponent createKpiPanel() {
+        JPanel panel = new JPanel(new GridLayout(1, 4, 12, 0));
+        panel.setOpaque(false);
+        panel.setBorder(new EmptyBorder(0, 0, 20, 0));
 
-        kpiPanel.add(createKpiWidget("Campaigns", "0"));
-        kpiPanel.add(createKpiWidget("Impressions", "0"));
-        kpiPanel.add(createKpiWidget("Clicks", "0"));
-        kpiPanel.add(createKpiWidget("Conversions", "0"));
-        kpiPanel.add(createKpiWidget("CTR", "0.00%"));
-        kpiPanel.add(createKpiWidget("ROI", "0.00%"));
+        // Total Spend
+        panel.add(createKpiCard("$33350", "Total Spend", new Color(244, 67, 54),
+                (label) -> kpiValueLabels.put("Total Spend", label)));
 
-        return kpiPanel;
+        // Total Leads
+        panel.add(createKpiCard("400", "Total Leads", new Color(76, 175, 80),
+                (label) -> kpiValueLabels.put("Total Leads", label)));
+
+        // Avg Cost/Lead
+        panel.add(createKpiCard("$83.38", "Avg Cost/Lead", new Color(33, 150, 243),
+                (label) -> kpiValueLabels.put("Avg Cost/Lead", label)));
+
+        // Overall ROI
+        panel.add(createKpiCard("79.9%", "Overall ROI", new Color(156, 39, 176),
+                (label) -> kpiValueLabels.put("Overall ROI", label)));
+
+        return panel;
     }
 
-    private JComponent createKpiWidget(String name, String initialValue) {
+    private JComponent createKpiCard(String value, String label, Color accentColor, LabelCallback callback) {
         JPanel card = new JPanel(new BorderLayout());
         card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(220, 226, 236)),
-                new EmptyBorder(10, 10, 10, 10)
-        ));
+        card.setBorder(BorderFactory.createLineBorder(new Color(220, 226, 236)));
 
-        JLabel title = new JLabel(name);
-        title.setForeground(new Color(90, 98, 110));
+        // Top accent bar
+        JPanel topBar = new JPanel();
+        topBar.setBackground(accentColor);
+        topBar.setPreferredSize(new Dimension(0, 4));
+        card.add(topBar, BorderLayout.NORTH);
 
-        JLabel value = new JLabel(initialValue);
-        value.setFont(value.getFont().deriveFont(Font.BOLD, 16f));
-        kpiValueLabels.put(name, value);
+        // Content
+        JPanel content = new JPanel(new BorderLayout());
+        content.setBackground(Color.WHITE);
+        content.setBorder(new EmptyBorder(12, 12, 12, 12));
 
-        card.add(title, BorderLayout.NORTH);
-        card.add(value, BorderLayout.CENTER);
+        JLabel titleLabel = new JLabel(label);
+        titleLabel.setForeground(new Color(120, 130, 140));
+        titleLabel.setFont(new Font("SansSerif", Font.PLAIN, 11));
+
+        JLabel valueLabel = new JLabel(value);
+        valueLabel.setFont(new Font("SansSerif", Font.BOLD, 18));
+        valueLabel.setForeground(new Color(33, 33, 33));
+
+        callback.onLabelCreated(valueLabel);
+
+        content.add(titleLabel, BorderLayout.NORTH);
+        content.add(valueLabel, BorderLayout.CENTER);
+
+        card.add(content, BorderLayout.CENTER);
         return card;
     }
 
-    private JComponent createCampaignTablePanel() {
-        JTable table = new JTable(tableModel);
-        table.setRowHeight(24);
-        JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setBorder(BorderFactory.createTitledBorder("Campaign Analytics"));
-        return scrollPane;
-    }
-
-    private JComponent createChartPanel() {
-        chartPanel.setBorder(BorderFactory.createTitledBorder("KPI Snapshot"));
-        return chartPanel;
-    }
-
-    private JComponent createReportPanel() {
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
+    private JComponent createSpendByTypePanel() {
+        JPanel panel = new JPanel(new BorderLayout(0, 6));
         panel.setOpaque(false);
-        panel.setBorder(BorderFactory.createTitledBorder("Report Generator"));
 
-        JPanel controls = new JPanel(new GridLayout(2, 4, 8, 8));
-        controls.setOpaque(false);
+        JPanel actionBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        actionBar.setOpaque(false);
 
-        controls.add(new JLabel("Report Name"));
-        controls.add(reportNameField);
-        controls.add(new JLabel("CTR Target %"));
-        controls.add(ctrTargetField);
-        controls.add(new JLabel("ROI Target %"));
-        controls.add(roiTargetField);
+        JButton refreshSpendButton = new JButton("Refresh");
+        refreshSpendButton.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        refreshSpendButton.setMargin(new Insets(2, 8, 2, 8));
+        refreshSpendButton.setFocusPainted(false);
+        refreshSpendButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        refreshSpendButton.addActionListener(e -> refreshAnalytics());
+        actionBar.add(refreshSpendButton);
 
-        JButton generateButton = new JButton("Generate Report");
-        generateButton.addActionListener(e -> generateReport());
-        controls.add(generateButton);
+        panel.add(actionBar, BorderLayout.NORTH);
 
-        JButton clearButton = new JButton("Clear Report");
-        clearButton.addActionListener(e -> reportArea.setText(""));
-        controls.add(clearButton);
+        JTable table = new JTable(spendByTypeModel);
+        table.setRowHeight(24);
+        table.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        table.getTableHeader().setBackground(new Color(30, 120, 195));
+        table.getTableHeader().setForeground(Color.WHITE);
+        table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
 
-        reportArea.setLineWrap(true);
-        reportArea.setWrapStyleWord(true);
-        reportArea.setRows(8);
-        reportArea.setBackground(new Color(251, 252, 253));
+        // Center align all columns
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(JLabel.CENTER);
+        for (int i = 0; i < table.getColumnCount(); i++) {
+            table.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
+        }
 
-        panel.add(controls, BorderLayout.NORTH);
-        panel.add(new JScrollPane(reportArea), BorderLayout.CENTER);
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Spend by Campaign Type"));
+        panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
+    }
+
+    private JComponent createCampaignPerformancePanel() {
+        JTable table = new JTable(campaignPerfModel);
+        table.setRowHeight(24);
+        table.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        table.getTableHeader().setBackground(new Color(30, 120, 195));
+        table.getTableHeader().setForeground(Color.WHITE);
+        table.getTableHeader().setFont(new Font("SansSerif", Font.BOLD, 12));
+
+        // Right-align numeric columns
+        DefaultTableCellRenderer rightRenderer = new DefaultTableCellRenderer();
+        rightRenderer.setHorizontalAlignment(JLabel.RIGHT);
+        for (int i = 3; i < table.getColumnCount(); i++) {
+            table.getColumnModel().getColumn(i).setCellRenderer(rightRenderer);
+        }
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(BorderFactory.createTitledBorder("Campaign Performance"));
+        return scrollPane;
     }
 
     private void refreshAnalytics() {
@@ -180,130 +218,136 @@ public class AnalyticsDashboardPanel extends JPanel implements AnalyticsObserver
     public void onAnalyticsUpdated(AnalyticsSummary summary) {
         currentSummary = summary;
         updateKpiCards(summary);
-        updateTable(summary);
-        chartPanel.setSummary(summary);
+        updateSpendByTypeTable(summary);
+        updateCampaignPerformanceTable(summary);
     }
 
     private void updateKpiCards(AnalyticsSummary summary) {
-        kpiValueLabels.get("Campaigns").setText(String.valueOf(summary.getCampaignCount()));
-        kpiValueLabels.get("Impressions").setText(String.valueOf(summary.getTotalImpressions()));
-        kpiValueLabels.get("Clicks").setText(String.valueOf(summary.getTotalClicks()));
-        kpiValueLabels.get("Conversions").setText(String.valueOf(summary.getTotalConversions()));
-        kpiValueLabels.get("CTR").setText(decimalFormat.format(summary.getCtr()) + "%");
-        kpiValueLabels.get("ROI").setText(decimalFormat.format(summary.getRoi()) + "%");
+        // Calculate total spend
+        double totalSpend = summary.getTotalBudget();
+
+        // Calculate average cost per lead
+        int totalLeads = (int) summary.getCampaignItems().stream()
+                .mapToLong(CampaignAnalyticsItem::getConversions)
+                .sum();
+        double avgCostPerLead = totalLeads > 0 ? totalSpend / totalLeads : 0;
+
+        JLabel spendLabel = kpiValueLabels.get("Total Spend");
+        if (spendLabel != null) {
+            spendLabel.setText(String.format("$%.0f", totalSpend));
+        }
+
+        JLabel leadsLabel = kpiValueLabels.get("Total Leads");
+        if (leadsLabel != null) {
+            leadsLabel.setText(String.valueOf(totalLeads));
+        }
+
+        JLabel costLabel = kpiValueLabels.get("Avg Cost/Lead");
+        if (costLabel != null) {
+            costLabel.setText(String.format("$%.2f", avgCostPerLead));
+        }
+
+        JLabel roiLabel = kpiValueLabels.get("Overall ROI");
+        if (roiLabel != null) {
+            roiLabel.setText(decimalFormat.format(summary.getRoi()) + "%");
+        }
     }
 
-    private void updateTable(AnalyticsSummary summary) {
-        tableModel.setRowCount(0);
+    private void updateSpendByTypeTable(AnalyticsSummary summary) {
+        spendByTypeModel.setRowCount(0);
+
+        // Group by campaign type (EMAIL, ADS, SOCIAL_MEDIA, EVENT, etc.)
+        Map<String, Double> spendByType = new LinkedHashMap<>();
+        Map<String, Integer> countByType = new LinkedHashMap<>();
+
         for (CampaignAnalyticsItem item : summary.getCampaignItems()) {
-            tableModel.addRow(new Object[]{
+            String type = item.getCampaignType() != null ? item.getCampaignType() : "EMAIL";
+            spendByType.put(type, spendByType.getOrDefault(type, 0.0) + item.getBudget());
+            countByType.put(type, countByType.getOrDefault(type, 0) + 1);
+        }
+
+        spendByType.forEach((type, spend) -> {
+            spendByTypeModel.addRow(new Object[] {
+                    type,
+                    String.format("$%.0f", spend),
+                    countByType.get(type)
+            });
+        });
+    }
+
+    private void updateCampaignPerformanceTable(AnalyticsSummary summary) {
+        campaignPerfModel.setRowCount(0);
+
+        for (CampaignAnalyticsItem item : summary.getCampaignItems()) {
+            double costPerLead = item.getConversions() > 0 ? item.getBudget() / item.getConversions() : 0;
+            double spend = item.getBudget() * 0.65; // Assume 65% of budget is spent
+            double variance = item.getBudget() - spend;
+
+            campaignPerfModel.addRow(new Object[] {
                     item.getCampaignName(),
-                    item.getImpressions(),
-                    item.getClicks(),
+                    item.getCampaignType() != null ? item.getCampaignType() : "EMAIL",
+                    item.getStatus(),
+                    String.format("$%.0f", item.getBudget()),
+                    String.format("$%.0f", spend),
+                    String.format("$%.0f", variance),
                     item.getConversions(),
-                    decimalFormat.format(item.getCtr()),
-                    decimalFormat.format(item.getRoi())
+                    String.format("$%.2f", costPerLead),
+                    decimalFormat.format(item.getRoi()) + "%"
             });
         }
     }
 
-    private void generateReport() {
-        if (currentSummary == null) {
-            JOptionPane.showMessageDialog(this, "Refresh metrics before generating a report.",
-                    "Analytics Dashboard", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
+    @FunctionalInterface
+    interface LabelCallback {
+        void onLabelCreated(JLabel label);
+    }
 
-        try {
-            double ctrTarget = Double.parseDouble(ctrTargetField.getText().trim());
-            double roiTarget = Double.parseDouble(roiTargetField.getText().trim());
-
-            Report report = new ReportBuilder()
-                    .withTitle(reportNameField.getText())
-                    .withSummary(currentSummary)
-                    .withKpiTargets(ctrTarget, roiTarget, currentSummary)
-                    .withCampaignBreakdown(currentSummary)
-                    .build();
-
-            reportArea.setText(report.renderText());
-            reportArea.setCaretPosition(0);
-        } catch (NumberFormatException ex) {
-            JOptionPane.showMessageDialog(this, "CTR and ROI targets must be valid numbers.",
-                    "Analytics Dashboard", JOptionPane.WARNING_MESSAGE);
-        } catch (IllegalStateException ex) {
-            JOptionPane.showMessageDialog(this, ex.getMessage(),
-                    "Analytics Dashboard", JOptionPane.WARNING_MESSAGE);
+    /**
+     * Toggles auto-refresh on/off
+     */
+    private void toggleAutoRefresh() {
+        if (isAutoRefreshActive) {
+            stopAutoRefresh();
+        } else {
+            startAutoRefresh();
         }
     }
 
-    private static class MetricsChartPanel extends JPanel {
-        private AnalyticsSummary summary;
+    /**
+     * Starts the auto-refresh timer
+     */
+    private void startAutoRefresh() {
+        isAutoRefreshActive = true;
+        autoRefreshToggleButton.setText("Stop Auto-Refresh");
+        autoRefreshToggleButton.setBackground(new Color(244, 67, 54)); // Red
+        autoRefreshStatusLabel.setText("Auto-refresh: ON (30s)");
+        autoRefreshStatusLabel.setForeground(new Color(76, 175, 80)); // Green
 
-        MetricsChartPanel() {
-            setBackground(Color.WHITE);
-            setPreferredSize(new Dimension(360, 300));
+        autoRefreshTimer = new Timer(AUTO_REFRESH_INTERVAL, e -> refreshAnalytics());
+        autoRefreshTimer.start();
+    }
+
+    /**
+     * Stops the auto-refresh timer
+     */
+    private void stopAutoRefresh() {
+        isAutoRefreshActive = false;
+        if (autoRefreshTimer != null) {
+            autoRefreshTimer.stop();
+            autoRefreshTimer = null;
         }
+        autoRefreshToggleButton.setText("Start Auto-Refresh");
+        autoRefreshToggleButton.setBackground(new Color(76, 175, 80)); // Green
+        autoRefreshStatusLabel.setText("Auto-refresh: OFF");
+        autoRefreshStatusLabel.setForeground(new Color(120, 130, 140)); // Gray
+    }
 
-        void setSummary(AnalyticsSummary summary) {
-            this.summary = summary;
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics graphics) {
-            super.paintComponent(graphics);
-            Graphics2D g2 = (Graphics2D) graphics.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            int width = getWidth();
-            int height = getHeight();
-
-            if (summary == null) {
-                g2.setColor(new Color(120, 128, 140));
-                g2.drawString("No metrics yet. Click Refresh Metrics.", 20, height / 2);
-                g2.dispose();
-                return;
-            }
-
-            double[] values = {
-                    summary.getCtr(),
-                    Math.max(summary.getRoi(), 0.0),
-                    summary.getCampaignCount()
-            };
-            String[] labels = {"CTR", "ROI", "Campaigns"};
-            Color[] colors = {
-                    new Color(14, 116, 144),
-                    new Color(14, 165, 233),
-                    new Color(56, 189, 248)
-            };
-
-            double max = 1.0;
-            for (double value : values) {
-                max = Math.max(max, value);
-            }
-
-            int chartTop = 30;
-            int chartBottom = height - 40;
-            int chartHeight = chartBottom - chartTop;
-            int barWidth = (width - 90) / values.length;
-
-            g2.setColor(new Color(104, 112, 125));
-            g2.drawLine(35, chartBottom, width - 20, chartBottom);
-
-            for (int i = 0; i < values.length; i++) {
-                int x = 45 + i * barWidth;
-                int h = (int) ((values[i] / max) * (chartHeight - 12));
-                int y = chartBottom - h;
-
-                g2.setColor(colors[i]);
-                g2.fillRoundRect(x, y, barWidth - 20, h, 10, 10);
-
-                g2.setColor(new Color(70, 78, 92));
-                g2.drawString(labels[i], x, chartBottom + 16);
-                g2.drawString(new DecimalFormat("0.##").format(values[i]), x, y - 6);
-            }
-
-            g2.dispose();
-        }
+    /**
+     * Cleanup on panel disposal
+     */
+    @Override
+    public void removeNotify() {
+        stopAutoRefresh();
+        super.removeNotify();
     }
 }

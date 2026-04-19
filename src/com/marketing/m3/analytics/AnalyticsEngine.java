@@ -65,8 +65,9 @@ public class AnalyticsEngine {
                     conversions,
                     budget,
                     ctr,
-                    roi
-            ));
+                    roi,
+                    campaign.getCampaignType(),
+                    campaign.getStatus()));
 
             totalImpressions += impressions;
             totalClicks += clicks;
@@ -86,7 +87,6 @@ public class AnalyticsEngine {
                 totalBudget,
                 overallCtr,
                 overallRoi,
-                items
-        );
+                items);
     }
 }
