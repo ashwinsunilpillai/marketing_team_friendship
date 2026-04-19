@@ -20,17 +20,21 @@ public class Campaign {
     private int impressions;
     private int clicks;
     private int conversions;
-    
+    private int leadTarget;
+    private int leadsGenerated;
+    private String campaignType; // EMAIL, ADS, SOCIAL_MEDIA, EVENT
+
     /**
      * Default constructor
      */
     public Campaign() {
     }
-    
+
     /**
      * Constructor with essential fields
      */
-    public Campaign(String campaignName, LocalDate startDate, LocalDate endDate, double budget, String status, int segmentId) {
+    public Campaign(String campaignName, LocalDate startDate, LocalDate endDate, double budget, String status,
+            int segmentId) {
         this.campaignName = campaignName;
         this.startDate = startDate;
         this.endDate = endDate;
@@ -41,12 +45,12 @@ public class Campaign {
         this.clicks = 0;
         this.conversions = 0;
     }
-    
+
     /**
      * Full constructor
      */
-    public Campaign(int campaignId, String campaignName, LocalDate startDate, LocalDate endDate, 
-                   double budget, String status, int segmentId, String description) {
+    public Campaign(int campaignId, String campaignName, LocalDate startDate, LocalDate endDate,
+            double budget, String status, int segmentId, String description) {
         this.campaignId = campaignId;
         this.campaignName = campaignName;
         this.startDate = startDate;
@@ -59,41 +63,120 @@ public class Campaign {
         this.clicks = 0;
         this.conversions = 0;
     }
-    
+
     // Getters and Setters
-    public int getCampaignId() { return campaignId; }
-    public void setCampaignId(int campaignId) { this.campaignId = campaignId; }
-    
-    public String getCampaignName() { return campaignName; }
-    public void setCampaignName(String campaignName) { this.campaignName = campaignName; }
-    
-    public LocalDate getStartDate() { return startDate; }
-    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
-    
-    public LocalDate getEndDate() { return endDate; }
-    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
-    
-    public double getBudget() { return budget; }
-    public void setBudget(double budget) { this.budget = budget; }
-    
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    
-    public int getSegmentId() { return segmentId; }
-    public void setSegmentId(int segmentId) { this.segmentId = segmentId; }
-    
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    
-    public int getImpressions() { return impressions; }
-    public void setImpressions(int impressions) { this.impressions = impressions; }
-    
-    public int getClicks() { return clicks; }
-    public void setClicks(int clicks) { this.clicks = clicks; }
-    
-    public int getConversions() { return conversions; }
-    public void setConversions(int conversions) { this.conversions = conversions; }
-    
+    public int getCampaignId() {
+        return campaignId;
+    }
+
+    public void setCampaignId(int campaignId) {
+        this.campaignId = campaignId;
+    }
+
+    public String getCampaignName() {
+        return campaignName;
+    }
+
+    public void setCampaignName(String campaignName) {
+        this.campaignName = campaignName;
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public void setStartDate(LocalDate startDate) {
+        this.startDate = startDate;
+    }
+
+    public LocalDate getEndDate() {
+        return endDate;
+    }
+
+    public void setEndDate(LocalDate endDate) {
+        this.endDate = endDate;
+    }
+
+    public double getBudget() {
+        return budget;
+    }
+
+    public void setBudget(double budget) {
+        this.budget = budget;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public int getSegmentId() {
+        return segmentId;
+    }
+
+    public void setSegmentId(int segmentId) {
+        this.segmentId = segmentId;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public int getImpressions() {
+        return impressions;
+    }
+
+    public void setImpressions(int impressions) {
+        this.impressions = impressions;
+    }
+
+    public int getClicks() {
+        return clicks;
+    }
+
+    public void setClicks(int clicks) {
+        this.clicks = clicks;
+    }
+
+    public int getConversions() {
+        return conversions;
+    }
+
+    public void setConversions(int conversions) {
+        this.conversions = conversions;
+    }
+
+    public int getLeadTarget() {
+        return leadTarget;
+    }
+
+    public void setLeadTarget(int leadTarget) {
+        this.leadTarget = leadTarget;
+    }
+
+    public int getLeadsGenerated() {
+        return leadsGenerated;
+    }
+
+    public void setLeadsGenerated(int leadsGenerated) {
+        this.leadsGenerated = leadsGenerated;
+    }
+
+    public String getCampaignType() {
+        return campaignType != null ? campaignType : "EMAIL";
+    }
+
+    public void setCampaignType(String campaignType) {
+        this.campaignType = campaignType;
+    }
+
     @Override
     public String toString() {
         return "Campaign{" +

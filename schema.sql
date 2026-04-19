@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS campaigns (
     impressions INT DEFAULT 0,
     clicks INT DEFAULT 0,
     conversions INT DEFAULT 0,
+    lead_target INT DEFAULT 100,
+    leads_generated INT DEFAULT 0,
+    campaign_type VARCHAR(50) DEFAULT 'EMAIL',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
