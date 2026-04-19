@@ -214,6 +214,13 @@ public class AnalyticsDashboardPanel extends JPanel implements AnalyticsObserver
         analyticsEngine.refresh(campaigns);
     }
 
+    /**
+     * Public entry to trigger a refresh from external callers.
+     */
+    public void refreshAnalyticsNow() {
+        refreshAnalytics();
+    }
+
     @Override
     public void onAnalyticsUpdated(AnalyticsSummary summary) {
         currentSummary = summary;

@@ -2,7 +2,9 @@ package com.marketing.ui;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.ChangeListener;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.BorderLayout;
 import java.awt.Font;
 import java.awt.Dimension;
@@ -23,7 +25,8 @@ public class MarketingERP extends JFrame {
         applyTheme();
         setTitle("Enterprise Resource Planning System");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1400, 800);
+        setExtendedState(JFrame.MAXIMIZED_BOTH);
+        setMinimumSize(new Dimension(1400, 800));
         setLocationRelativeTo(null);
 
         JPanel rootPanel = new JPanel(new BorderLayout());
@@ -78,7 +81,7 @@ public class MarketingERP extends JFrame {
         contentPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
         mainArea.add(contentPanel, BorderLayout.CENTER);
 
-        // Show marketing by default
+        // Show the marketing workspace by default
         showMarketing();
 
         return mainArea;
@@ -95,7 +98,23 @@ public class MarketingERP extends JFrame {
     private void showMarketing() {
         currentModuleLabel.setText("Marketing");
         contentPanel.removeAll();
-        contentPanel.add(new CampaignManagerPanel(), BorderLayout.CENTER);
+
+        JTabbedPane marketingTabs = new JTabbedPane();
+        marketingTabs.setBackground(Color.WHITE);
+        marketingTabs.setFont(new Font("SansSerif", Font.BOLD, 13));
+        marketingTabs.addTab("Campaigns", new CampaignManagerPanel());
+        marketingTabs.addTab("Lead Tracking", new LeadTrackingPanel());
+        marketingTabs.addTab("Analytics", new AnalyticsDashboardPanel());
+
+        // Refresh Lead Tracking panel when its tab is selected so it shows latest statuses
+        marketingTabs.addChangeListener(e -> {
+            Component comp = marketingTabs.getSelectedComponent();
+            if (comp instanceof LeadTrackingPanel) {
+                ((LeadTrackingPanel) comp).refreshData();
+            }
+        });
+
+        contentPanel.add(marketingTabs, BorderLayout.CENTER);
         contentPanel.revalidate();
         contentPanel.repaint();
     }

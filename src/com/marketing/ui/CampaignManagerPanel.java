@@ -61,24 +61,6 @@ public class CampaignManagerPanel extends JPanel {
         JPanel header = createHeader();
         add(header, BorderLayout.NORTH);
 
-        // Create a wrapper panel for tabs and content
-        JPanel mainContent = new JPanel(new BorderLayout(0, 0));
-        mainContent.setOpaque(false);
-
-        // Create tabbed pane
-        JTabbedPane tabbedPane = createTabbedPane();
-        mainContent.add(tabbedPane, BorderLayout.CENTER);
-
-        add(mainContent, BorderLayout.CENTER);
-    }
-
-    private JTabbedPane createTabbedPane() {
-        JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.setBackground(Color.WHITE);
-        tabbedPane.setFont(new Font("SansSerif", Font.BOLD, 12));
-        tabbedPane.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(220, 226, 236)));
-
-        // Campaigns tab
         JPanel campaignsPanel = new JPanel(new BorderLayout(10, 10));
         campaignsPanel.setOpaque(false);
         campaignsPanel.add(createMetricsPanel(), BorderLayout.NORTH);
@@ -95,31 +77,8 @@ public class CampaignManagerPanel extends JPanel {
         campaignsContent.add(createTablePanel(), BorderLayout.CENTER);
 
         campaignsPanel.add(campaignsContent, BorderLayout.CENTER);
-        tabbedPane.addTab("Campaigns", campaignsPanel);
 
-        // Lead Tracking tab
-        LeadTrackingPanel leadTrackingPanel = new LeadTrackingPanel();
-        tabbedPane.addTab("Lead Tracking", leadTrackingPanel);
-
-        // Analytics tab
-        AnalyticsDashboardPanel analyticsDashboardPanel = new AnalyticsDashboardPanel();
-        tabbedPane.addTab("Analytics", analyticsDashboardPanel);
-
-        return tabbedPane;
-    }
-
-    private JPanel createPlaceholderTab(String tabName) {
-        JPanel panel = new JPanel(new GridLayout(1, 1));
-        panel.setBackground(Color.WHITE);
-
-        JLabel label = new JLabel(tabName + " coming soon...");
-        label.setFont(new Font("SansSerif", Font.PLAIN, 16));
-        label.setForeground(new Color(150, 150, 150));
-        label.setHorizontalAlignment(JLabel.CENTER);
-        label.setVerticalAlignment(JLabel.CENTER);
-
-        panel.add(label);
-        return panel;
+        add(campaignsPanel, BorderLayout.CENTER);
     }
 
     /**
@@ -342,11 +301,24 @@ public class CampaignManagerPanel extends JPanel {
 
         campaignTable = new JTable(tableModel);
         campaignTable.setRowHeight(32);
+        campaignTable.setRowSelectionAllowed(true);
+        campaignTable.setColumnSelectionAllowed(false);
         campaignTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         campaignTable.setBackground(Color.WHITE);
         campaignTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && campaignTable.getSelectedRow() >= 0) {
-                selectedCampaignId = (Integer) tableModel.getValueAt(campaignTable.getSelectedRow(), 0);
+                int viewRow = campaignTable.getSelectedRow();
+                int modelRow = campaignTable.convertRowIndexToModel(viewRow);
+                Object idObj = tableModel.getValueAt(modelRow, 0);
+                if (idObj instanceof Number) {
+                    selectedCampaignId = ((Number) idObj).intValue();
+                } else {
+                    try {
+                        selectedCampaignId = Integer.parseInt(idObj.toString());
+                    } catch (Exception ex) {
+                        selectedCampaignId = -1;
+                    }
+                }
             }
         });
 
@@ -427,6 +399,11 @@ public class CampaignManagerPanel extends JPanel {
      * Loads all campaigns into the table
      */
     private void loadCampaigns() {
+        // clear selection because we'll reload the table
+        selectedCampaignId = -1;
+        if (campaignTable != null) {
+            campaignTable.clearSelection();
+        }
         tableModel.setRowCount(0);
         List<Campaign> campaigns = campaignFacade.getAllCampaigns();
 
@@ -460,6 +437,11 @@ public class CampaignManagerPanel extends JPanel {
      * Applies search and filter criteria to the table
      */
     private void applyFilters() {
+        // clear selection when applying filters
+        selectedCampaignId = -1;
+        if (campaignTable != null) {
+            campaignTable.clearSelection();
+        }
         tableModel.setRowCount(0);
         List<Campaign> campaigns = campaignFacade.getAllCampaigns();
 
@@ -735,8 +717,183 @@ public class CampaignManagerPanel extends JPanel {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
-        JOptionPane.showMessageDialog(this, "Edit Campaign ID: " + selectedCampaignId, "Edit Campaign",
-                JOptionPane.INFORMATION_MESSAGE);
+
+        Campaign campaign;
+        try {
+            campaign = campaignFacade.getCampaignById(selectedCampaignId);
+        } catch (com.marketing.exception.CampaignNotFoundException ex) {
+            JOptionPane.showMessageDialog(this, "Campaign not found: " + ex.getMessage(), "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Edit Campaign", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setSize(520, 760);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+        mainPanel.setBackground(Color.WHITE);
+
+        JPanel fieldsPanel = new JPanel(new GridLayout(0, 2, 10, 15));
+        fieldsPanel.setBackground(Color.WHITE);
+
+        fieldsPanel.add(createLabel("Campaign Name:*"));
+        JTextField nameField = new JTextField(campaign.getCampaignName());
+        fieldsPanel.add(nameField);
+
+        fieldsPanel.add(createLabel("Type:"));
+        JComboBox<String> typeCombo = new JComboBox<>(new String[] { "EMAIL", "SOCIAL_MEDIA", "ADS", "CONTENT", "EVENT" });
+        typeCombo.setSelectedItem(campaign.getCampaignType());
+        fieldsPanel.add(typeCombo);
+
+        fieldsPanel.add(createLabel("Status:"));
+        JComboBox<String> statusCombo = new JComboBox<>(new String[] { "PLANNED", "ACTIVE", "PAUSED", "COMPLETED" });
+        statusCombo.setSelectedItem(campaign.getStatus());
+        fieldsPanel.add(statusCombo);
+
+        fieldsPanel.add(createLabel("Start Date:"));
+        JSpinner startDateSpinner = new JSpinner(new SpinnerDateModel());
+        if (campaign.getStartDate() != null) {
+            startDateSpinner.setValue(java.sql.Date.valueOf(campaign.getStartDate()));
+        }
+        fieldsPanel.add(startDateSpinner);
+
+        fieldsPanel.add(createLabel("End Date:"));
+        JSpinner endDateSpinner = new JSpinner(new SpinnerDateModel());
+        if (campaign.getEndDate() != null) {
+            endDateSpinner.setValue(java.sql.Date.valueOf(campaign.getEndDate()));
+        }
+        fieldsPanel.add(endDateSpinner);
+
+        fieldsPanel.add(createLabel("Budget:"));
+        JTextField budgetField = new JTextField(String.valueOf(campaign.getBudget()));
+        fieldsPanel.add(budgetField);
+
+        fieldsPanel.add(createLabel("Target Audience:"));
+        JTextField audienceField = new JTextField();
+        fieldsPanel.add(audienceField);
+
+        fieldsPanel.add(createLabel("Lead Target:"));
+        JTextField leadTargetField = new JTextField(String.valueOf(campaign.getLeadTarget()));
+        fieldsPanel.add(leadTargetField);
+
+        fieldsPanel.add(createLabel("Channel:"));
+        JTextField channelField = new JTextField(campaign.getCampaignType());
+        fieldsPanel.add(channelField);
+
+        fieldsPanel.add(createLabel("Description:"));
+        JTextArea descriptionArea = new JTextArea(3, 20);
+        descriptionArea.setLineWrap(true);
+        descriptionArea.setWrapStyleWord(true);
+        descriptionArea.setText(campaign.getDescription());
+        fieldsPanel.add(new JScrollPane(descriptionArea));
+
+        fieldsPanel.add(createLabel("Notes:"));
+        JTextArea notesArea = new JTextArea(2, 20);
+        notesArea.setLineWrap(true);
+        notesArea.setWrapStyleWord(true);
+        fieldsPanel.add(new JScrollPane(notesArea));
+
+        mainPanel.add(fieldsPanel, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        buttonPanel.setBackground(Color.WHITE);
+
+        JButton cancelButton = new JButton("Cancel");
+        cancelButton.setBackground(new Color(200, 200, 200));
+        cancelButton.setForeground(new Color(45, 55, 72));
+        cancelButton.setOpaque(true);
+        cancelButton.setContentAreaFilled(true);
+        cancelButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(150, 150, 150), 1),
+                BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+        cancelButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        cancelButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        cancelButton.addActionListener(e -> dialog.dispose());
+        buttonPanel.add(cancelButton);
+
+        JButton saveButton = new JButton("Save");
+        saveButton.setBackground(new Color(33, 150, 243));
+        saveButton.setForeground(Color.WHITE);
+        saveButton.setOpaque(true);
+        saveButton.setContentAreaFilled(true);
+        saveButton.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(200, 200, 200), 1),
+                BorderFactory.createEmptyBorder(6, 12, 6, 12)));
+        saveButton.setFont(new Font("SansSerif", Font.BOLD, 12));
+        saveButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        saveButton.addActionListener(e -> {
+            try {
+                String name = nameField.getText().trim();
+                if (name.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Campaign name is required", "Validation Error",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
+                campaign.setCampaignName(name);
+                campaign.setCampaignType((String) typeCombo.getSelectedItem());
+                campaign.setStatus((String) statusCombo.getSelectedItem());
+
+                // Dates conversion
+                try {
+                    java.util.Date sd = (java.util.Date) startDateSpinner.getValue();
+                    campaign.setStartDate(new java.sql.Date(sd.getTime()).toLocalDate());
+                } catch (Exception ex) {
+                    // ignore, keep existing
+                }
+                try {
+                    java.util.Date ed = (java.util.Date) endDateSpinner.getValue();
+                    campaign.setEndDate(new java.sql.Date(ed.getTime()).toLocalDate());
+                } catch (Exception ex) {
+                    // ignore, keep existing
+                }
+
+                try {
+                    campaign.setBudget(Double.parseDouble(budgetField.getText().trim()));
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(dialog, "Invalid budget amount", "Validation Error",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
+                try {
+                    int lt = Integer.parseInt(leadTargetField.getText().trim());
+                    campaign.setLeadTarget(lt > 0 ? lt : campaign.getLeadTarget());
+                } catch (NumberFormatException ex) {
+                    // ignore
+                }
+
+                campaign.setDescription(descriptionArea.getText());
+
+                // Persist
+                try {
+                    campaignFacade.updateCampaign(campaign);
+                    JOptionPane.showMessageDialog(dialog, "Campaign updated successfully!", "Success",
+                            JOptionPane.INFORMATION_MESSAGE);
+                    dialog.dispose();
+                    loadCampaigns();
+                } catch (com.marketing.exception.CampaignNotFoundException cnf) {
+                    JOptionPane.showMessageDialog(dialog, "Campaign not found: " + cnf.getMessage(), "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                } catch (com.marketing.exception.CampaignStateException cse) {
+                    JOptionPane.showMessageDialog(dialog, "Error updating campaign: " + cse.getMessage(), "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Unexpected error: " + ex.getMessage(), "Error",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        buttonPanel.add(saveButton);
+
+        mainPanel.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(mainPanel);
+        dialog.setVisible(true);
     }
 
     /**
@@ -774,17 +931,48 @@ public class CampaignManagerPanel extends JPanel {
                     JOptionPane.WARNING_MESSAGE);
             return;
         }
-
         try {
-            Campaign campaign = campaignFacade.getCampaignById(selectedCampaignId);
-            campaign.setStatus(newStatus);
-            if (campaignFacade.updateCampaign(campaign)) {
+            boolean ok = campaignFacade.changeCampaignStatus(selectedCampaignId, newStatus);
+            if (ok) {
                 JOptionPane.showMessageDialog(this, "Campaign status changed to " + newStatus, "Success",
                         JOptionPane.INFORMATION_MESSAGE);
                 loadCampaigns();
+                // refresh other related panels (lead tracking, analytics) in the UI
+                refreshSiblingPanels();
+            } else {
+                JOptionPane.showMessageDialog(this, "Failed to change campaign status", "Error",
+                        JOptionPane.ERROR_MESSAGE);
             }
+        } catch (com.marketing.exception.CampaignStateException | com.marketing.exception.CampaignNotFoundException ex) {
+            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(), "Error",
+                    JOptionPane.ERROR_MESSAGE);
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Unexpected error: " + ex.getMessage(), "Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void refreshSiblingPanels() {
+        Window root = SwingUtilities.getWindowAncestor(this);
+        if (root == null) return;
+        java.util.List<Component> found = new java.util.ArrayList<>();
+        findComponents(root, found);
+        for (Component c : found) {
+            if (c instanceof LeadTrackingPanel) {
+                try { ((LeadTrackingPanel) c).refreshData(); } catch (Exception ignore) {}
+            } else if (c instanceof AnalyticsDashboardPanel) {
+                try { ((AnalyticsDashboardPanel) c).refreshAnalyticsNow(); } catch (Exception ignore) {}
+            }
+        }
+    }
+
+    private void findComponents(Component parent, java.util.List<Component> out) {
+        if (parent == null) return;
+        out.add(parent);
+        if (parent instanceof Container) {
+            for (Component child : ((Container) parent).getComponents()) {
+                findComponents(child, out);
+            }
         }
     }
 
