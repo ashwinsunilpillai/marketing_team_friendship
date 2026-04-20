@@ -375,8 +375,14 @@ public class LeadTrackingPanel extends JPanel {
         leftSearch.add(searchBtn);
 
         JPanel rightActions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton addLeadBtn = new JButton("Add Lead");
+        JButton qualifyBtn = new JButton("Mark Qualified");
+        JButton convertBtn = new JButton("Convert + Revenue");
         JButton exportBtn = new JButton("Export CSV");
         JButton copyBtn = new JButton("Copy Details");
+        rightActions.add(addLeadBtn);
+        rightActions.add(qualifyBtn);
+        rightActions.add(convertBtn);
         rightActions.add(exportBtn);
         rightActions.add(copyBtn);
 
@@ -397,6 +403,7 @@ public class LeadTrackingPanel extends JPanel {
         final int pageSize = 10;
         final int[] page = new int[] { 1 };
         final int[] totalPages = new int[] { Math.max(1, (int) Math.ceil((double) filtered.size() / pageSize)) };
+        final JLabel pageLabel = new JLabel("Page " + page[0] + " of " + totalPages[0]);
 
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -417,7 +424,31 @@ public class LeadTrackingPanel extends JPanel {
             }
         };
 
-        JLabel pageLabel = new JLabel("Page " + page[0] + " of " + totalPages[0]);
+        Runnable refreshLists = () -> {
+            leads.clear();
+            leads.addAll(leadFacade.getLeadsByCampaign(campaignId));
+            String q = searchField.getText().trim().toLowerCase();
+            filtered.clear();
+            if (q.isEmpty()) {
+                filtered.addAll(leads);
+            } else {
+                for (Lead l : leads) {
+                    String name = l.getName() != null ? l.getName().toLowerCase() : "";
+                    String email = l.getEmail() != null ? l.getEmail().toLowerCase() : "";
+                    String state = l.getState() != null ? l.getState().toLowerCase() : "";
+                    if (name.contains(q) || email.contains(q) || state.contains(q)) {
+                        filtered.add(l);
+                    }
+                }
+            }
+            page[0] = 1;
+            totalPages[0] = Math.max(1, (int) Math.ceil((double) filtered.size() / pageSize));
+            loadPage.run();
+            pageLabel.setText("Page " + page[0] + " of " + totalPages[0]);
+            refreshData();
+            refreshSiblingPanels();
+        };
+
         JButton prev = new JButton("Prev");
         JButton next = new JButton("Next");
         prev.addActionListener(e -> {
@@ -472,6 +503,102 @@ public class LeadTrackingPanel extends JPanel {
             totalPages[0] = Math.max(1, (int) Math.ceil((double) filtered.size() / pageSize));
             loadPage.run();
             pageLabel.setText("Page " + page[0] + " of " + totalPages[0]);
+        });
+
+        addLeadBtn.addActionListener(e -> {
+            JTextField nameField = new JTextField();
+            JTextField emailField = new JTextField();
+            Object[] msg = {
+                    "Name:", nameField,
+                    "Email:", emailField
+            };
+            int ok = JOptionPane.showConfirmDialog(dialog, msg, "Add Lead", JOptionPane.OK_CANCEL_OPTION);
+            if (ok == JOptionPane.OK_OPTION) {
+                String n = nameField.getText().trim();
+                String em = emailField.getText().trim();
+                if (n.isEmpty() || em.isEmpty()) {
+                    JOptionPane.showMessageDialog(dialog, "Name and email are required.", "Validation",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+                Lead nl = new Lead();
+                nl.setName(n);
+                nl.setEmail(em);
+                nl.setCampaignId(campaignId);
+                nl.setState("New");
+                if (leadFacade.createLead(nl)) {
+                    refreshLists.run();
+                } else {
+                    JOptionPane.showMessageDialog(dialog, "Could not create lead.", "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+
+        qualifyBtn.addActionListener(e -> {
+            int sr = leadsTable.getSelectedRow();
+            if (sr < 0) {
+                JOptionPane.showMessageDialog(dialog, "Select a lead first.", "Lead State",
+                        JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+            int modelRow = leadsTable.convertRowIndexToModel(sr);
+            int index = (page[0] - 1) * pageSize + modelRow;
+            if (index < 0 || index >= filtered.size()) {
+                return;
+            }
+            Lead l = filtered.get(index);
+            if (leadFacade.transitionLeadState(l.getLeadId(), "Qualified")) {
+                refreshLists.run();
+            } else {
+                JOptionPane.showMessageDialog(dialog, "Transition to Qualified is not allowed.", "Lead State",
+                        JOptionPane.WARNING_MESSAGE);
+            }
+        });
+
+        convertBtn.addActionListener(e -> {
+            int sr = leadsTable.getSelectedRow();
+            if (sr < 0) {
+                JOptionPane.showMessageDialog(dialog, "Select a lead first.", "Lead Conversion",
+                        JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+            int modelRow = leadsTable.convertRowIndexToModel(sr);
+            int index = (page[0] - 1) * pageSize + modelRow;
+            if (index < 0 || index >= filtered.size()) {
+                return;
+            }
+
+            Lead l = filtered.get(index);
+            String amount = JOptionPane.showInputDialog(dialog, "Closed revenue amount for this lead:", "0.00");
+            if (amount == null) return;
+
+            double revenue;
+            try {
+                revenue = Double.parseDouble(amount.trim());
+                if (revenue < 0) {
+                    JOptionPane.showMessageDialog(dialog, "Revenue cannot be negative.", "Validation",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(dialog, "Invalid revenue amount.", "Validation",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (leadFacade.convertLeadWithRevenue(l.getLeadId(), revenue)) {
+                refreshLists.run();
+                JOptionPane.showMessageDialog(dialog,
+                        "Lead converted. Revenue attributed to campaign analytics.",
+                        "Converted",
+                        JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(dialog,
+                        "Conversion failed. Ensure lead is New/Qualified and try again.",
+                        "Lead Conversion",
+                        JOptionPane.WARNING_MESSAGE);
+            }
         });
 
         // Export
@@ -543,8 +670,10 @@ public class LeadTrackingPanel extends JPanel {
         JPanel content = new JPanel(new BorderLayout(6, 6));
         content.add(top, BorderLayout.NORTH);
         content.add(scroll, BorderLayout.CENTER);
-        content.add(pager, BorderLayout.SOUTH);
-        content.add(detailScroll, BorderLayout.SOUTH);
+        JPanel bottom = new JPanel(new BorderLayout(0, 6));
+        bottom.add(detailScroll, BorderLayout.CENTER);
+        bottom.add(pager, BorderLayout.SOUTH);
+        content.add(bottom, BorderLayout.SOUTH);
 
         loadPage.run();
 
@@ -557,5 +686,30 @@ public class LeadTrackingPanel extends JPanel {
      */
     public void refreshData() {
         loadLeadData();
+    }
+
+    private void refreshSiblingPanels() {
+        Window root = SwingUtilities.getWindowAncestor(this);
+        if (root == null) return;
+        java.util.List<Component> found = new java.util.ArrayList<>();
+        findComponents(root, found);
+        for (Component c : found) {
+            if (c instanceof AnalyticsDashboardPanel) {
+                try {
+                    ((AnalyticsDashboardPanel) c).refreshAnalyticsNow();
+                } catch (Exception ignore) {
+                }
+            }
+        }
+    }
+
+    private void findComponents(Component parent, java.util.List<Component> out) {
+        if (parent == null) return;
+        out.add(parent);
+        if (parent instanceof Container) {
+            for (Component child : ((Container) parent).getComponents()) {
+                findComponents(child, out);
+            }
+        }
     }
 }

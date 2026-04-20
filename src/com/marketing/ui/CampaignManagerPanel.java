@@ -3,6 +3,7 @@ package com.marketing.ui;
 import com.marketing.entity.Campaign;
 import com.marketing.exception.*;
 import com.marketing.facade.CampaignFacade;
+import com.marketing.util.DBUtil;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -18,6 +19,7 @@ import java.util.List;
  */
 public class CampaignManagerPanel extends JPanel {
     private CampaignFacade campaignFacade;
+    private DBUtil dbUtil;
 
     // UI Components
     private JTable campaignTable;
@@ -45,6 +47,7 @@ public class CampaignManagerPanel extends JPanel {
      */
     public CampaignManagerPanel() {
         this.campaignFacade = new CampaignFacade();
+        this.dbUtil = DBUtil.getInstance();
         initializeUI();
         loadCampaigns();
     }
@@ -558,6 +561,30 @@ public class CampaignManagerPanel extends JPanel {
         JTextField channelField = new JTextField();
         fieldsPanel.add(channelField);
 
+        // Metrics Section Header
+        fieldsPanel.add(createLabel("--- Initial Metrics ---"));
+        fieldsPanel.add(new JLabel(""));
+
+        // Impressions
+        fieldsPanel.add(createLabel("Impressions:"));
+        JTextField impressionsField = new JTextField("0");
+        fieldsPanel.add(impressionsField);
+
+        // Clicks
+        fieldsPanel.add(createLabel("Clicks:"));
+        JTextField clicksField = new JTextField("0");
+        fieldsPanel.add(clicksField);
+
+        // Conversions
+        fieldsPanel.add(createLabel("Conversions:"));
+        JTextField conversionsField = new JTextField("0");
+        fieldsPanel.add(conversionsField);
+
+        // Revenue
+        fieldsPanel.add(createLabel("Revenue Generated:"));
+        JTextField revenueField = new JTextField("0.00");
+        fieldsPanel.add(revenueField);
+
         // Description
         fieldsPanel.add(createLabel("Description:"));
         JTextArea descriptionArea = new JTextArea(3, 20);
@@ -613,10 +640,13 @@ public class CampaignManagerPanel extends JPanel {
 
                 // Create campaign object
                 Campaign campaign = new Campaign();
-                campaign.setCampaignName(name);
+                campaign.setCampaignTitle(name);  // Use new schema field
+                campaign.setCampaignName(name);   // Also set legacy field for compatibility
                 campaign.setStatus((String) statusCombo.getSelectedItem());
                 campaign.setCampaignType((String) typeCombo.getSelectedItem());
-                campaign.setBudget(Double.parseDouble(budgetField.getText()));
+                double budgetAmount = Double.parseDouble(budgetField.getText());
+                campaign.setCampaignBudget(budgetAmount);  // Use new schema field
+                campaign.setBudget(budgetAmount);         // Also set legacy field
                 campaign.setStartDate(LocalDate.now());
                 campaign.setEndDate(LocalDate.now().plusMonths(1));
                 campaign.setSegmentId(1); // Default segment
@@ -635,6 +665,20 @@ public class CampaignManagerPanel extends JPanel {
 
                 // Save campaign
                 if (campaignFacade.createCampaign(campaign)) {
+                    // Insert initial metrics data if provided
+                    try {
+                        int impressions = Integer.parseInt(impressionsField.getText().trim());
+                        int clicks = Integer.parseInt(clicksField.getText().trim());
+                        int conversions = Integer.parseInt(conversionsField.getText().trim());
+                        double revenue = Double.parseDouble(revenueField.getText().trim());
+                        
+                        if (impressions > 0 || clicks > 0 || conversions > 0 || revenue > 0) {
+                            insertCampaignMetrics(campaign.getCampaignId(), impressions, clicks, conversions, revenue);
+                        }
+                    } catch (NumberFormatException ex) {
+                        // Metrics fields were invalid, continue anyway
+                    }
+                    
                     JOptionPane.showMessageDialog(dialog, "Campaign created successfully!", "Success",
                             JOptionPane.INFORMATION_MESSAGE);
                     dialog.dispose();
@@ -783,6 +827,25 @@ public class CampaignManagerPanel extends JPanel {
         JTextField channelField = new JTextField(campaign.getCampaignType());
         fieldsPanel.add(channelField);
 
+        // Existing metrics (editable) for this campaign
+        CampaignMetricsSnapshot metricSnapshot = getLatestCampaignMetrics(campaign.getCampaignId());
+
+        fieldsPanel.add(createLabel("Impressions:"));
+        JTextField impressionsField = new JTextField(String.valueOf(metricSnapshot.impressions));
+        fieldsPanel.add(impressionsField);
+
+        fieldsPanel.add(createLabel("Clicks:"));
+        JTextField clicksField = new JTextField(String.valueOf(metricSnapshot.clicks));
+        fieldsPanel.add(clicksField);
+
+        fieldsPanel.add(createLabel("Conversions:"));
+        JTextField conversionsField = new JTextField(String.valueOf(metricSnapshot.conversions));
+        fieldsPanel.add(conversionsField);
+
+        fieldsPanel.add(createLabel("Revenue Generated:"));
+        JTextField revenueField = new JTextField(String.format("%.2f", metricSnapshot.revenue));
+        fieldsPanel.add(revenueField);
+
         fieldsPanel.add(createLabel("Description:"));
         JTextArea descriptionArea = new JTextArea(3, 20);
         descriptionArea.setLineWrap(true);
@@ -833,6 +896,7 @@ public class CampaignManagerPanel extends JPanel {
                     return;
                 }
 
+                campaign.setCampaignTitle(name);
                 campaign.setCampaignName(name);
                 campaign.setCampaignType((String) typeCombo.getSelectedItem());
                 campaign.setStatus((String) statusCombo.getSelectedItem());
@@ -852,7 +916,9 @@ public class CampaignManagerPanel extends JPanel {
                 }
 
                 try {
-                    campaign.setBudget(Double.parseDouble(budgetField.getText().trim()));
+                    double budget = Double.parseDouble(budgetField.getText().trim());
+                    campaign.setCampaignBudget(budget);
+                    campaign.setBudget(budget);
                 } catch (NumberFormatException ex) {
                     JOptionPane.showMessageDialog(dialog, "Invalid budget amount", "Validation Error",
                             JOptionPane.WARNING_MESSAGE);
@@ -868,13 +934,35 @@ public class CampaignManagerPanel extends JPanel {
 
                 campaign.setDescription(descriptionArea.getText());
 
+                int impressions;
+                int clicks;
+                int conversions;
+                double revenue;
+                try {
+                    impressions = Integer.parseInt(impressionsField.getText().trim());
+                    clicks = Integer.parseInt(clicksField.getText().trim());
+                    conversions = Integer.parseInt(conversionsField.getText().trim());
+                    revenue = Double.parseDouble(revenueField.getText().trim());
+                    if (impressions < 0 || clicks < 0 || conversions < 0 || revenue < 0) {
+                        JOptionPane.showMessageDialog(dialog, "Metrics values cannot be negative", "Validation Error",
+                                JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(dialog, "Invalid metrics values", "Validation Error",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
                 // Persist
                 try {
                     campaignFacade.updateCampaign(campaign);
+                    upsertCampaignMetrics(campaign.getCampaignId(), impressions, clicks, conversions, revenue);
                     JOptionPane.showMessageDialog(dialog, "Campaign updated successfully!", "Success",
                             JOptionPane.INFORMATION_MESSAGE);
                     dialog.dispose();
                     loadCampaigns();
+                    refreshSiblingPanels();
                 } catch (com.marketing.exception.CampaignNotFoundException cnf) {
                     JOptionPane.showMessageDialog(dialog, "Campaign not found: " + cnf.getMessage(), "Error",
                             JOptionPane.ERROR_MESSAGE);
@@ -973,6 +1061,85 @@ public class CampaignManagerPanel extends JPanel {
             for (Component child : ((Container) parent).getComponents()) {
                 findComponents(child, out);
             }
+        }
+    }
+
+    /**
+     * Insert initial campaign metrics data for a newly created campaign
+     */
+    private void insertCampaignMetrics(int campaignId, int impressions, int clicks, int conversions, double revenue) {
+        String sql = "INSERT INTO campaign_metrics (campaign_id, metric_date, impressions, clicks, conversions, revenue_generated) VALUES (?, ?, ?, ?, ?, ?)";
+        
+        try (java.sql.Connection conn = dbUtil.getConnection();
+             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            pstmt.setInt(1, campaignId);
+            pstmt.setDate(2, java.sql.Date.valueOf(LocalDate.now()));
+            pstmt.setInt(3, impressions);
+            pstmt.setInt(4, clicks);
+            pstmt.setInt(5, conversions);
+            pstmt.setDouble(6, revenue);
+            
+            pstmt.executeUpdate();
+            System.out.println("Campaign metrics inserted for campaign ID: " + campaignId);
+        } catch (java.sql.SQLException e) {
+            System.err.println("Failed to insert campaign metrics: " + e.getMessage());
+        }
+    }
+
+    private CampaignMetricsSnapshot getLatestCampaignMetrics(int campaignId) {
+        String sql = "SELECT impressions, clicks, conversions, revenue_generated " +
+                "FROM campaign_metrics WHERE campaign_id = ? ORDER BY metric_date DESC, metric_id DESC LIMIT 1";
+        try (java.sql.Connection conn = dbUtil.getConnection();
+             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, campaignId);
+            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return new CampaignMetricsSnapshot(
+                            rs.getInt("impressions"),
+                            rs.getInt("clicks"),
+                            rs.getInt("conversions"),
+                            rs.getDouble("revenue_generated"));
+                }
+            }
+        } catch (java.sql.SQLException e) {
+            System.err.println("Failed to fetch campaign metrics: " + e.getMessage());
+        }
+        return new CampaignMetricsSnapshot(0, 0, 0, 0.0);
+    }
+
+    private void upsertCampaignMetrics(int campaignId, int impressions, int clicks, int conversions, double revenue) {
+        LocalDate metricDate = LocalDate.now();
+        String updateSql = "UPDATE campaign_metrics SET impressions = ?, clicks = ?, conversions = ?, revenue_generated = ? " +
+                "WHERE campaign_id = ? AND metric_date = ?";
+        try (java.sql.Connection conn = dbUtil.getConnection();
+             java.sql.PreparedStatement update = conn.prepareStatement(updateSql)) {
+            update.setInt(1, impressions);
+            update.setInt(2, clicks);
+            update.setInt(3, conversions);
+            update.setDouble(4, revenue);
+            update.setInt(5, campaignId);
+            update.setDate(6, java.sql.Date.valueOf(metricDate));
+            int affected = update.executeUpdate();
+            if (affected == 0) {
+                insertCampaignMetrics(campaignId, impressions, clicks, conversions, revenue);
+            }
+        } catch (java.sql.SQLException e) {
+            System.err.println("Failed to upsert campaign metrics: " + e.getMessage());
+        }
+    }
+
+    private static class CampaignMetricsSnapshot {
+        final int impressions;
+        final int clicks;
+        final int conversions;
+        final double revenue;
+
+        CampaignMetricsSnapshot(int impressions, int clicks, int conversions, double revenue) {
+            this.impressions = impressions;
+            this.clicks = clicks;
+            this.conversions = conversions;
+            this.revenue = revenue;
         }
     }
 

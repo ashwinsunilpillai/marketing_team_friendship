@@ -82,14 +82,104 @@ public class DBUtil {
                 }
             }
 
+            // Ensure campaigns has status column for UI state workflow
+            try (ResultSet cols = meta.getColumns(null, null, "campaigns", "status")) {
+                if (!cols.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("ALTER TABLE campaigns ADD COLUMN status VARCHAR(30) DEFAULT 'PLANNED'");
+                        System.out.println("Added column status to campaigns");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not add status column: " + ex.getMessage());
+                    }
+                }
+            }
+
+            // Create campaign_metrics table if missing
+            try (ResultSet tables = meta.getTables(null, null, "campaign_metrics", new String[] {"TABLE"})) {
+                if (!tables.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("CREATE TABLE IF NOT EXISTS campaign_metrics (" +
+                                "metric_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                                "campaign_id INT NOT NULL, " +
+                                "metric_date DATE NOT NULL, " +
+                                "impressions INT DEFAULT 0, " +
+                                "clicks INT DEFAULT 0, " +
+                                "conversions INT DEFAULT 0, " +
+                                "revenue_generated DECIMAL(15,2) DEFAULT 0, " +
+                                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                                "INDEX idx_campaign_metrics_campaign_id (campaign_id), " +
+                                "INDEX idx_campaign_metrics_date (metric_date)" +
+                                ")");
+                        System.out.println("Created table campaign_metrics");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not create campaign_metrics table: " + ex.getMessage());
+                    }
+                }
+            }
+
             // Create leads table if missing
             try (ResultSet tables = meta.getTables(null, null, "leads", new String[] {"TABLE"})) {
                 if (!tables.next()) {
                     try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (lead_id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255), campaign_id INT, state VARCHAR(50), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+                        s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (" +
+                                "lead_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                                "name VARCHAR(255), " +
+                                "email VARCHAR(255), " +
+                                "campaign_id INT, " +
+                                "state VARCHAR(50), " +
+                                "source VARCHAR(100), " +
+                                "expected_value DECIMAL(15,2) DEFAULT 0, " +
+                                "closed_value DECIMAL(15,2) DEFAULT 0, " +
+                                "converted_at TIMESTAMP NULL, " +
+                                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+                                ")");
                         System.out.println("Created table leads");
                     } catch (SQLException ex) {
                         System.err.println("Could not create leads table: " + ex.getMessage());
+                    }
+                }
+            }
+
+            // Ensure leads table has pipeline columns
+            try (ResultSet cols = meta.getColumns(null, null, "leads", "source")) {
+                if (!cols.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("ALTER TABLE leads ADD COLUMN source VARCHAR(100)");
+                        System.out.println("Added column source to leads");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not add source column: " + ex.getMessage());
+                    }
+                }
+            }
+            try (ResultSet cols = meta.getColumns(null, null, "leads", "expected_value")) {
+                if (!cols.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("ALTER TABLE leads ADD COLUMN expected_value DECIMAL(15,2) DEFAULT 0");
+                        System.out.println("Added column expected_value to leads");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not add expected_value column: " + ex.getMessage());
+                    }
+                }
+            }
+            try (ResultSet cols = meta.getColumns(null, null, "leads", "closed_value")) {
+                if (!cols.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("ALTER TABLE leads ADD COLUMN closed_value DECIMAL(15,2) DEFAULT 0");
+                        System.out.println("Added column closed_value to leads");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not add closed_value column: " + ex.getMessage());
+                    }
+                }
+            }
+            try (ResultSet cols = meta.getColumns(null, null, "leads", "converted_at")) {
+                if (!cols.next()) {
+                    try (Statement s = connection.createStatement()) {
+                        s.executeUpdate("ALTER TABLE leads ADD COLUMN converted_at TIMESTAMP NULL");
+                        System.out.println("Added column converted_at to leads");
+                    } catch (SQLException ex) {
+                        System.err.println("Could not add converted_at column: " + ex.getMessage());
                     }
                 }
             }
@@ -133,7 +223,19 @@ public class DBUtil {
             // Final safety: ensure leads table exists (attempt unconditional IF NOT EXISTS to cover edge cases)
             try {
                 try (Statement s = connection.createStatement()) {
-                    s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (lead_id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), email VARCHAR(255), campaign_id INT, state VARCHAR(50), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+                    s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (" +
+                            "lead_id INT AUTO_INCREMENT PRIMARY KEY, " +
+                            "name VARCHAR(255), " +
+                            "email VARCHAR(255), " +
+                            "campaign_id INT, " +
+                            "state VARCHAR(50), " +
+                            "source VARCHAR(100), " +
+                            "expected_value DECIMAL(15,2) DEFAULT 0, " +
+                            "closed_value DECIMAL(15,2) DEFAULT 0, " +
+                            "converted_at TIMESTAMP NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
+                            ")");
                     System.out.println("Ensured table leads exists (safety check)");
                 }
             } catch (SQLException ex) {
