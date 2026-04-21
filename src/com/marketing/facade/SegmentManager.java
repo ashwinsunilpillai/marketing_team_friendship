@@ -31,20 +31,36 @@ public class SegmentManager {
             throw new InvalidSegmentCriteriaException("Segment cannot be null");
         }
         
-        String sql = "INSERT INTO segments (segment_name, segment_type, criteria, description) VALUES (?, ?, ?, ?)";
+        // Use customer_segments table for new schema, fall back to segments for legacy
+        String sql = "INSERT INTO customer_segments (segment_name, segment_description, criteria_definition) VALUES (?, ?, ?)";
         
         try (Connection conn = dbUtil.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             
             pstmt.setString(1, segment.getSegmentName());
-            pstmt.setString(2, segment.getSegmentType());
-            pstmt.setString(3, segment.getCriteria());
-            pstmt.setString(4, segment.getDescription());
+            pstmt.setString(2, segment.getSegmentDescription() != null ? segment.getSegmentDescription() : segment.getDescription());
+            pstmt.setString(3, segment.getCriteriaDefinition() != null ? segment.getCriteriaDefinition() : segment.getCriteria());
             
             int affectedRows = pstmt.executeUpdate();
             return affectedRows > 0;
             
         } catch (SQLException e) {
+            // Try legacy table if customer_segments doesn't exist
+            if (e.getMessage().contains("doesn't exist") || e.getMessage().contains("no such table")) {
+                try {
+                    String legacySql = "INSERT INTO segments (segment_name, segment_type, criteria, description) VALUES (?, ?, ?, ?)";
+                    try (Connection conn2 = dbUtil.getConnection();
+                         PreparedStatement pstmt2 = conn2.prepareStatement(legacySql)) {
+                        pstmt2.setString(1, segment.getSegmentName());
+                        pstmt2.setString(2, segment.getSegmentType());
+                        pstmt2.setString(3, segment.getCriteria());
+                        pstmt2.setString(4, segment.getDescription());
+                        return pstmt2.executeUpdate() > 0;
+                    }
+                } catch (SQLException e2) {
+                    throw new InvalidSegmentCriteriaException("Failed to create segment: " + e2.getMessage(), e2);
+                }
+            }
             throw new InvalidSegmentCriteriaException("Failed to create segment: " + e.getMessage(), e);
         }
     }
@@ -164,9 +180,30 @@ public class SegmentManager {
         Segment segment = new Segment();
         segment.setSegmentId(rs.getInt("segment_id"));
         segment.setSegmentName(rs.getString("segment_name"));
-        segment.setSegmentType(rs.getString("segment_type"));
-        segment.setCriteria(rs.getString("criteria"));
-        segment.setDescription(rs.getString("description"));
+        
+        // Try new schema columns first
+        try {
+            segment.setSegmentDescription(rs.getString("segment_description"));
+        } catch (SQLException ignore) {
+        }
+        try {
+            segment.setCriteriaDefinition(rs.getString("criteria_definition"));
+        } catch (SQLException ignore) {
+        }
+        
+        // Legacy columns
+        try {
+            segment.setSegmentType(rs.getString("segment_type"));
+        } catch (SQLException ignore) {
+        }
+        try {
+            segment.setCriteria(rs.getString("criteria"));
+        } catch (SQLException ignore) {
+        }
+        try {
+            segment.setDescription(rs.getString("description"));
+        } catch (SQLException ignore) {
+        }
         
         try {
             segment.setCustomerCount(rs.getInt("customer_count"));

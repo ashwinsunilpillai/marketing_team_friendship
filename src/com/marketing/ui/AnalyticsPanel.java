@@ -2,6 +2,7 @@ package com.marketing.ui;
 
 import com.marketing.entity.Campaign;
 import com.marketing.facade.CampaignFacade;
+import com.marketing.util.DBUtil;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -14,6 +15,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.sql.*;
 import java.util.*;
 
 /**
@@ -21,6 +23,7 @@ import java.util.*;
  */
 public class AnalyticsPanel extends JPanel {
     private CampaignFacade campaignFacade;
+    private DBUtil dbUtil;
     private JLabel totalSpendLabel;
     private JLabel totalLeadsLabel;
     private JLabel avgCostPerLeadLabel;
@@ -32,6 +35,7 @@ public class AnalyticsPanel extends JPanel {
 
     public AnalyticsPanel() {
         this.campaignFacade = new CampaignFacade();
+        this.dbUtil = DBUtil.getInstance();
         initializeUI();
         loadAnalytics();
     }
@@ -288,32 +292,52 @@ public class AnalyticsPanel extends JPanel {
 
     private void loadAnalytics() {
         List<Campaign> campaigns = campaignFacade.getAllCampaigns();
+        
+        // Fetch metrics from campaign_metrics table
+        Map<Integer, CampaignMetrics> metricsMap = fetchCampaignMetrics();
 
-        // Calculate metrics
         double totalSpend = 0;
         int totalLeads = 0;
         double totalBudget = 0;
+        double totalRevenue = 0;
 
         Map<String, Double> spendByType = new LinkedHashMap<>();
         Map<String, Integer> campaignCountByType = new LinkedHashMap<>();
+        Map<String, Double> revenueByType = new LinkedHashMap<>();
 
         for (Campaign campaign : campaigns) {
-            double spend = campaign.getBudget() * 0.65; // 65% of budget as spend
-            int leads = campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 45;
-
+            double budget = campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget();
+            CampaignMetrics metrics = metricsMap.getOrDefault(campaign.getCampaignId(), new CampaignMetrics(0, 0, 0, 0));
+            
+            double spend = metrics.revenue > 0 ? metrics.revenue : budget * 0.65;
+            int leads = metrics.conversions > 0 ? metrics.conversions : 0;
+            
             totalSpend += spend;
             totalLeads += leads;
-            totalBudget += campaign.getBudget();
+            totalBudget += budget;
+            totalRevenue += metrics.revenue;
 
-            // Group by type (defaulting to EMAIL)
-            String type = "EMAIL";
+            // Group by type
+            String type = campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL";
             spendByType.put(type, spendByType.getOrDefault(type, 0.0) + spend);
             campaignCountByType.put(type, campaignCountByType.getOrDefault(type, 0) + 1);
+            revenueByType.put(type, revenueByType.getOrDefault(type, 0.0) + metrics.revenue);
         }
 
-        // Calculate average cost per lead and ROI
+        // Calculate metrics
         double avgCostPerLead = totalLeads > 0 ? totalSpend / totalLeads : 0;
-        double overallROI = totalBudget > 0 ? ((totalSpend - totalBudget) / totalBudget) * 100 : 0;
+        // ROI: if no conversions across all campaigns, show 0% (pending data)
+        // Otherwise calculate based on spend vs budget
+        double overallROI;
+        if (totalLeads == 0 && totalRevenue == 0) {
+            // No metrics data collected yet across all campaigns
+            overallROI = 0.0;
+        } else if (totalBudget > 0) {
+            // Has metrics data - calculate ROI
+            overallROI = ((totalSpend - totalBudget) / totalBudget) * 100;
+        } else {
+            overallROI = 0.0;
+        }
 
         // Update metric labels
         if (totalSpendLabel != null)
@@ -321,9 +345,9 @@ public class AnalyticsPanel extends JPanel {
         if (totalLeadsLabel != null)
             totalLeadsLabel.setText(String.valueOf(totalLeads));
         if (avgCostPerLeadLabel != null)
-            avgCostPerLeadLabel.setText("$" + String.format("%.2f", avgCostPerLead));
+            avgCostPerLeadLabel.setText(totalLeads > 0 ? "$" + String.format("%.2f", avgCostPerLead) : "$0.00");
         if (overallROILabel != null)
-            overallROILabel.setText(String.format("%.1f%%", Math.abs(overallROI)));
+            overallROILabel.setText(String.format("%.1f%%", overallROI));
 
         // Load Spend by Campaign Type table
         spendByTypeModel.setRowCount(0);
@@ -339,25 +363,83 @@ public class AnalyticsPanel extends JPanel {
         // Load Campaign Performance table
         performanceModel.setRowCount(0);
         for (Campaign campaign : campaigns) {
-            double spend = campaign.getBudget() * 0.65;
-            double variance = campaign.getBudget() - spend;
-            int leads = campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 45;
+            double budget = campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget();
+            CampaignMetrics metrics = metricsMap.getOrDefault(campaign.getCampaignId(), new CampaignMetrics(0, 0, 0, 0));
+            
+            double spend = metrics.revenue > 0 ? metrics.revenue : budget * 0.65;
+            double variance = budget - spend;
+            int leads = metrics.conversions;
             double costPerLead = leads > 0 ? spend / leads : 0;
-            double roiPercent = campaign.getBudget() > 0 ? ((spend - campaign.getBudget()) / campaign.getBudget()) * 100
-                    : 0;
+            
+            // ROI calculation: if no metrics data yet (conversions = 0), show 0% (pending)
+            // Otherwise show actual ROI
+            double roiPercent;
+            if (metrics.conversions == 0 && metrics.revenue == 0) {
+                // No metrics data collected yet - show 0% as "pending data"
+                roiPercent = 0.0;
+            } else {
+                // Has metrics - calculate ROI
+                roiPercent = budget > 0 ? ((spend - budget) / budget) * 100 : 0;
+            }
 
             Object[] row = {
-                    campaign.getCampaignName(),
-                    "EMAIL",
-                    campaign.getStatus(),
-                    "$" + String.format("%.0f", campaign.getBudget()),
+                    campaign.getCampaignTitle() != null ? campaign.getCampaignTitle() : campaign.getCampaignName(),
+                    campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL",
+                    campaign.getStatus() != null ? campaign.getStatus() : "ACTIVE",
+                    "$" + String.format("%.0f", budget),
                     "$" + String.format("%.0f", spend),
                     "$" + String.format("%.0f", variance),
                     leads,
-                    "$" + String.format("%.2f", costPerLead),
+                    leads > 0 ? "$" + String.format("%.2f", costPerLead) : "$0.00",
                     String.format("%.1f%%", roiPercent)
             };
             performanceModel.addRow(row);
+        }
+    }
+    
+    /**
+     * Fetch metrics from campaign_metrics table and aggregate by campaign_id
+     */
+    private Map<Integer, CampaignMetrics> fetchCampaignMetrics() {
+        Map<Integer, CampaignMetrics> metricsMap = new HashMap<>();
+        String sql = "SELECT campaign_id, SUM(impressions) as total_impressions, SUM(clicks) as total_clicks, " +
+                     "SUM(conversions) as total_conversions, SUM(revenue_generated) as total_revenue " +
+                     "FROM campaign_metrics GROUP BY campaign_id";
+        
+        try (Connection conn = dbUtil.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            
+            while (rs.next()) {
+                int campaignId = rs.getInt("campaign_id");
+                int impressions = rs.getInt("total_impressions");
+                int clicks = rs.getInt("total_clicks");
+                int conversions = rs.getInt("total_conversions");
+                double revenue = rs.getDouble("total_revenue");
+                
+                metricsMap.put(campaignId, new CampaignMetrics(impressions, clicks, conversions, revenue));
+            }
+        } catch (SQLException e) {
+            System.err.println("Error fetching campaign metrics: " + e.getMessage());
+        }
+        
+        return metricsMap;
+    }
+    
+    /**
+     * Inner class to hold aggregated campaign metrics
+     */
+    private static class CampaignMetrics {
+        int impressions;
+        int clicks;
+        int conversions;
+        double revenue;
+        
+        CampaignMetrics(int impressions, int clicks, int conversions, double revenue) {
+            this.impressions = impressions;
+            this.clicks = clicks;
+            this.conversions = conversions;
+            this.revenue = revenue;
         }
     }
 }
