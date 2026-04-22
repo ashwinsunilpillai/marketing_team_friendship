@@ -4,31 +4,33 @@ import com.marketing.entity.EmailRecord;
 import com.marketing.entity.EmailTemplateRecord;
 import com.marketing.util.DBUtil;
 
-import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class EmailTemplateFacade {
+    private static final String TEMPLATES_TABLE = "email_templates";
+    private static final String EMAILS_TABLE = "emails";
+    private static final String EMAIL_ID_COLUMN = "email_id";
     private final DBUtil dbUtil = DBUtil.getInstance();
 
     public boolean createTemplate(EmailTemplateRecord tmpl) {
-        String sql = "INSERT INTO email_templates (name, subject, body) VALUES (?, ?, ?)";
-        try (Connection conn = dbUtil.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) return false;
 
-            pstmt.setString(1, tmpl.getName());
-            pstmt.setString(2, tmpl.getSubject());
-            pstmt.setString(3, tmpl.getBody());
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("name", tmpl.getName());
+            payload.put("subject", tmpl.getSubject());
+            payload.put("body", tmpl.getBody());
 
-            int affected = pstmt.executeUpdate();
-            if (affected == 0) return false;
-
-            try (ResultSet keys = pstmt.getGeneratedKeys()) {
-                if (keys.next()) tmpl.setTemplateId(keys.getInt(1));
-            }
+            marketingSubsystem.getClass()
+                    .getMethod("create", String.class, Map.class)
+                    .invoke(marketingSubsystem, TEMPLATES_TABLE, payload);
             return true;
-        } catch (SQLException e) {
+        } catch (Exception e) {
             System.err.println("Error creating template: " + e.getMessage());
             return false;
         }
@@ -36,56 +38,67 @@ public class EmailTemplateFacade {
 
     public List<EmailTemplateRecord> getAllTemplates() {
         List<EmailTemplateRecord> results = new ArrayList<>();
-        String sql = "SELECT * FROM email_templates ORDER BY created_at DESC";
-        try (Connection conn = dbUtil.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) return results;
 
-            while (rs.next()) {
-                EmailTemplateRecord t = new EmailTemplateRecord();
-                t.setTemplateId(rs.getInt("template_id"));
-                t.setName(rs.getString("name"));
-                t.setSubject(rs.getString("subject"));
-                t.setBody(rs.getString("body"));
-                results.add(t);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) marketingSubsystem.getClass()
+                    .getMethod("readAll", String.class, Map.class)
+                    .invoke(marketingSubsystem, TEMPLATES_TABLE, new HashMap<>());
+
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    EmailTemplateRecord t = new EmailTemplateRecord();
+                    if (row.get("template_id") instanceof Number n) t.setTemplateId(n.intValue());
+                    t.setName((String) row.get("name"));
+                    t.setSubject((String) row.get("subject"));
+                    t.setBody((String) row.get("body"));
+                    results.add(t);
+                }
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             System.err.println("Error loading templates: " + e.getMessage());
         }
         return results;
     }
 
     public int createEmailRecord(EmailRecord email) {
-        String sql = "INSERT INTO emails (template_id, recipient, subject, body, status) VALUES (?, ?, ?, ?, ?)";
-        try (Connection conn = dbUtil.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) return -1;
 
-            if (email.getTemplateId() > 0) pstmt.setInt(1, email.getTemplateId()); else pstmt.setNull(1, Types.INTEGER);
-            pstmt.setString(2, email.getRecipient());
-            pstmt.setString(3, email.getSubject());
-            pstmt.setString(4, email.getBody());
-            pstmt.setString(5, email.getStatus() != null ? email.getStatus() : "PENDING");
+            Map<String, Object> payload = new HashMap<>();
+            if (email.getTemplateId() > 0) payload.put("template_id", email.getTemplateId());
+            payload.put("recipient", email.getRecipient());
+            payload.put("subject", email.getSubject());
+            payload.put("body", email.getBody());
+            payload.put("status", email.getStatus() != null ? email.getStatus() : "PENDING");
 
-            int affected = pstmt.executeUpdate();
-            if (affected == 0) return -1;
-            try (ResultSet keys = pstmt.getGeneratedKeys()) {
-                if (keys.next()) return keys.getInt(1);
-            }
-        } catch (SQLException e) {
+            marketingSubsystem.getClass()
+                    .getMethod("create", String.class, Map.class)
+                    .invoke(marketingSubsystem, EMAILS_TABLE, payload);
+            return 1;
+        } catch (Exception e) {
             System.err.println("Error creating email record: " + e.getMessage());
+            return -1;
         }
-        return -1;
     }
 
     public boolean updateEmailStatus(int emailId, String status) {
-        String sql = "UPDATE emails SET status = ?, sent_at = ? WHERE email_id = ?";
-        try (Connection conn = dbUtil.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, status);
-            pstmt.setTimestamp(2, Timestamp.valueOf(LocalDateTime.now()));
-            pstmt.setInt(3, emailId);
-            return pstmt.executeUpdate() > 0;
-        } catch (SQLException e) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) return false;
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("status", status);
+            payload.put("sent_at", LocalDateTime.now());
+
+            marketingSubsystem.getClass()
+                    .getMethod("update", String.class, String.class, Object.class, Map.class)
+                    .invoke(marketingSubsystem, EMAILS_TABLE, EMAIL_ID_COLUMN, emailId, payload);
+            return true;
+        } catch (Exception e) {
             System.err.println("Error updating email status: " + e.getMessage());
             return false;
         }
@@ -93,26 +106,31 @@ public class EmailTemplateFacade {
 
     public List<EmailRecord> getRecentEmails(int limit) {
         List<EmailRecord> results = new ArrayList<>();
-        String sql = "SELECT * FROM emails ORDER BY created_at DESC LIMIT ?";
-        try (Connection conn = dbUtil.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, limit);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) return results;
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) marketingSubsystem.getClass()
+                    .getMethod("readAll", String.class, Map.class)
+                    .invoke(marketingSubsystem, EMAILS_TABLE, new HashMap<>());
+
+            if (rows != null) {
+                int count = 0;
+                for (Map<String, Object> row : rows) {
+                    if (count >= limit) break;
                     EmailRecord r = new EmailRecord();
-                    r.setEmailId(rs.getInt("email_id"));
-                    r.setTemplateId(rs.getInt("template_id"));
-                    r.setRecipient(rs.getString("recipient"));
-                    r.setSubject(rs.getString("subject"));
-                    r.setBody(rs.getString("body"));
-                    r.setStatus(rs.getString("status"));
-                    Timestamp sent = rs.getTimestamp("sent_at");
-                    if (sent != null) r.setSentAt(sent.toLocalDateTime());
-                    Timestamp created = rs.getTimestamp("created_at");
-                    if (created != null) r.setCreatedAt(created.toLocalDateTime());
+                    if (row.get("email_id") instanceof Number n) r.setEmailId(n.intValue());
+                    if (row.get("template_id") instanceof Number n) r.setTemplateId(n.intValue());
+                    r.setRecipient((String) row.get("recipient"));
+                    r.setSubject((String) row.get("subject"));
+                    r.setBody((String) row.get("body"));
+                    r.setStatus((String) row.get("status"));
                     results.add(r);
+                    count++;
                 }
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             System.err.println("Error loading recent emails: " + e.getMessage());
         }
         return results;
