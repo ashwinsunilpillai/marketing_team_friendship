@@ -1,257 +1,28 @@
 package com.marketing.util;
 
+import com.likeseca.erp.database.facade.ErpDatabaseFacade;
+
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.util.Properties;
 
-/**
- * DBUtil - Singleton pattern
- * Manages database connection pool for the Marketing ERP subsystem.
- * Follows the Singleton creational pattern to ensure one shared connection
- * source.
- * GRASP: Information Expert (knows how to manage DB connections)
- */
 public class DBUtil {
     private static DBUtil instance;
-    private Connection connection;
+    private ErpDatabaseFacade erpDatabaseFacade;
 
-    // Database configuration - adjust these based on your setup
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/marketing_erp";
-    private static final String DB_USER = "root";
-    private static final String DB_PASSWORD = "ROOTPASSWORD";
-    private static final String JDBC_DRIVER = "com.mysql.cj.jdbc.Driver";
-
-    /**
-     * Private constructor to prevent instantiation
-     */
     private DBUtil() {
         try {
-            Class.forName(JDBC_DRIVER);
-            this.connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-            System.out.println("Database connection established successfully.");
-            // Ensure required schema elements exist for extended marketing features
-            ensureSchema();
-        } catch (ClassNotFoundException e) {
-            System.err.println("MySQL JDBC Driver not found: " + e.getMessage());
-        } catch (SQLException e) {
-            System.err.println("Database connection failed: " + e.getMessage());
+            this.erpDatabaseFacade = new ErpDatabaseFacade();
+            System.out.println("ERP Database Facade initialized successfully.");
+        } catch (Exception e) {
+            System.err.println("Failed to initialize ERP Database Facade: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-    /**
-     * Create missing tables/columns required by the marketing subsystem extensions.
-     */
-    private void ensureSchema() {
-        try {
-            java.sql.DatabaseMetaData meta = connection.getMetaData();
-
-            // Ensure campaigns has lead_target and leads_generated columns
-            try (ResultSet cols = meta.getColumns(null, null, "campaigns", "lead_target")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE campaigns ADD COLUMN lead_target INT DEFAULT 100");
-                        System.out.println("Added column lead_target to campaigns");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add lead_target column: " + ex.getMessage());
-                    }
-                }
-            }
-
-            try (ResultSet cols = meta.getColumns(null, null, "campaigns", "leads_generated")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE campaigns ADD COLUMN leads_generated INT DEFAULT 0");
-                        System.out.println("Added column leads_generated to campaigns");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add leads_generated column: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Ensure campaigns has campaign_type column
-            try (ResultSet cols = meta.getColumns(null, null, "campaigns", "campaign_type")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE campaigns ADD COLUMN campaign_type VARCHAR(50) DEFAULT 'EMAIL'");
-                        System.out.println("Added column campaign_type to campaigns");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add campaign_type column: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Ensure campaigns has status column for UI state workflow
-            try (ResultSet cols = meta.getColumns(null, null, "campaigns", "status")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE campaigns ADD COLUMN status VARCHAR(30) DEFAULT 'PLANNED'");
-                        System.out.println("Added column status to campaigns");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add status column: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Create campaign_metrics table if missing
-            try (ResultSet tables = meta.getTables(null, null, "campaign_metrics", new String[] {"TABLE"})) {
-                if (!tables.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS campaign_metrics (" +
-                                "metric_id INT AUTO_INCREMENT PRIMARY KEY, " +
-                                "campaign_id INT NOT NULL, " +
-                                "metric_date DATE NOT NULL, " +
-                                "impressions INT DEFAULT 0, " +
-                                "clicks INT DEFAULT 0, " +
-                                "conversions INT DEFAULT 0, " +
-                                "revenue_generated DECIMAL(15,2) DEFAULT 0, " +
-                                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
-                                "INDEX idx_campaign_metrics_campaign_id (campaign_id), " +
-                                "INDEX idx_campaign_metrics_date (metric_date)" +
-                                ")");
-                        System.out.println("Created table campaign_metrics");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not create campaign_metrics table: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Create leads table if missing
-            try (ResultSet tables = meta.getTables(null, null, "leads", new String[] {"TABLE"})) {
-                if (!tables.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (" +
-                                "lead_id INT AUTO_INCREMENT PRIMARY KEY, " +
-                                "name VARCHAR(255), " +
-                                "email VARCHAR(255), " +
-                                "campaign_id INT, " +
-                                "state VARCHAR(50), " +
-                                "source VARCHAR(100), " +
-                                "expected_value DECIMAL(15,2) DEFAULT 0, " +
-                                "closed_value DECIMAL(15,2) DEFAULT 0, " +
-                                "converted_at TIMESTAMP NULL, " +
-                                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                                ")");
-                        System.out.println("Created table leads");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not create leads table: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Ensure leads table has pipeline columns
-            try (ResultSet cols = meta.getColumns(null, null, "leads", "source")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE leads ADD COLUMN source VARCHAR(100)");
-                        System.out.println("Added column source to leads");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add source column: " + ex.getMessage());
-                    }
-                }
-            }
-            try (ResultSet cols = meta.getColumns(null, null, "leads", "expected_value")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE leads ADD COLUMN expected_value DECIMAL(15,2) DEFAULT 0");
-                        System.out.println("Added column expected_value to leads");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add expected_value column: " + ex.getMessage());
-                    }
-                }
-            }
-            try (ResultSet cols = meta.getColumns(null, null, "leads", "closed_value")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE leads ADD COLUMN closed_value DECIMAL(15,2) DEFAULT 0");
-                        System.out.println("Added column closed_value to leads");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add closed_value column: " + ex.getMessage());
-                    }
-                }
-            }
-            try (ResultSet cols = meta.getColumns(null, null, "leads", "converted_at")) {
-                if (!cols.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("ALTER TABLE leads ADD COLUMN converted_at TIMESTAMP NULL");
-                        System.out.println("Added column converted_at to leads");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not add converted_at column: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Create email_templates table if missing
-            try (ResultSet tables = meta.getTables(null, null, "email_templates", new String[] {"TABLE"})) {
-                if (!tables.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS email_templates (template_id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255), subject VARCHAR(255), body TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
-                        System.out.println("Created table email_templates");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not create email_templates table: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Create emails table if missing
-            try (ResultSet tables = meta.getTables(null, null, "emails", new String[] {"TABLE"})) {
-                if (!tables.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS emails (email_id INT AUTO_INCREMENT PRIMARY KEY, template_id INT, recipient VARCHAR(255), subject VARCHAR(255), body TEXT, status VARCHAR(50) DEFAULT 'PENDING', sent_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-                        System.out.println("Created table emails");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not create emails table: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Create crm_sync_log table if missing
-            try (ResultSet tables = meta.getTables(null, null, "crm_sync_log", new String[] {"TABLE"})) {
-                if (!tables.next()) {
-                    try (Statement s = connection.createStatement()) {
-                        s.executeUpdate("CREATE TABLE IF NOT EXISTS crm_sync_log (log_id INT AUTO_INCREMENT PRIMARY KEY, source VARCHAR(100), details TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
-                        System.out.println("Created table crm_sync_log");
-                    } catch (SQLException ex) {
-                        System.err.println("Could not create crm_sync_log table: " + ex.getMessage());
-                    }
-                }
-            }
-
-            // Final safety: ensure leads table exists (attempt unconditional IF NOT EXISTS to cover edge cases)
-            try {
-                try (Statement s = connection.createStatement()) {
-                    s.executeUpdate("CREATE TABLE IF NOT EXISTS leads (" +
-                            "lead_id INT AUTO_INCREMENT PRIMARY KEY, " +
-                            "name VARCHAR(255), " +
-                            "email VARCHAR(255), " +
-                            "campaign_id INT, " +
-                            "state VARCHAR(50), " +
-                            "source VARCHAR(100), " +
-                            "expected_value DECIMAL(15,2) DEFAULT 0, " +
-                            "closed_value DECIMAL(15,2) DEFAULT 0, " +
-                            "converted_at TIMESTAMP NULL, " +
-                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                            ")");
-                    System.out.println("Ensured table leads exists (safety check)");
-                }
-            } catch (SQLException ex) {
-                System.err.println("Final leads table ensure failed: " + ex.getMessage());
-            }
-
-        } catch (SQLException e) {
-            System.err.println("Schema check failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Returns the singleton instance of DBUtil
-     * 
-     * @return DBUtil singleton instance
-     */
     public static synchronized DBUtil getInstance() {
         if (instance == null) {
             instance = new DBUtil();
@@ -259,32 +30,39 @@ public class DBUtil {
         return instance;
     }
 
-    /**
-     * Gets the database connection
-     * 
-     * @return Connection object
-     */
+    public ErpDatabaseFacade getErpDatabaseFacade() {
+        return erpDatabaseFacade;
+    }
+
+    public Object getMarketingSubsystem() {
+        return erpDatabaseFacade != null ? erpDatabaseFacade.marketingSubsystem() : null;
+    }
+
+    // Backward-compatible JDBC accessor for legacy code paths still using Connection.
     public Connection getConnection() {
-        try {
-            // Return a fresh connection for each caller to avoid sharing the singleton
-            // Connection across threads and risking ResultSet/Statement lifecycle issues.
-            return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-        } catch (SQLException e) {
-            System.err.println("Error retrieving connection: " + e.getMessage());
+        Properties props = new Properties();
+        try (FileInputStream fis = new FileInputStream("database.properties")) {
+            props.load(fis);
+            String host = props.getProperty("db.host", "127.0.0.1");
+            String port = props.getProperty("db.port", "3306");
+            String dbName = props.getProperty("db.name", "erp_subsystem");
+            String user = props.getProperty("db.username", "root");
+            String password = props.getProperty("db.password", "");
+            String url = "jdbc:mysql://" + host + ":" + port + "/" + dbName;
+            return DriverManager.getConnection(url, user, password);
+        } catch (IOException | SQLException e) {
+            System.err.println("Error creating JDBC connection: " + e.getMessage());
             return null;
         }
     }
 
-    /**
-     * Closes the database connection
-     */
     public void closeConnection() {
         try {
-            if (connection != null && !connection.isClosed()) {
-                connection.close();
-                System.out.println("Database connection closed.");
+            if (erpDatabaseFacade != null) {
+                erpDatabaseFacade.close();
+                System.out.println("ERP Database Facade connection closed.");
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             System.err.println("Error closing connection: " + e.getMessage());
         }
     }
