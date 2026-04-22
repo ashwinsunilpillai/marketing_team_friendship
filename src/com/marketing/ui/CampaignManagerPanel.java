@@ -412,7 +412,7 @@ public class CampaignManagerPanel extends JPanel {
 
         for (Campaign campaign : campaigns) {
             int leadTarget = campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100;
-            int leadsGenerated = campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 45;
+            int leadsGenerated = Math.max(0, campaign.getLeadsGenerated());
 
             double conversionRate = leadTarget > 0 ? (double) leadsGenerated / leadTarget * 100 : 0;
 
@@ -475,7 +475,7 @@ public class CampaignManagerPanel extends JPanel {
 
             // Add row if it passes all filters
             int leadTarget = campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100;
-            int leadsGenerated = campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 45;
+            int leadsGenerated = Math.max(0, campaign.getLeadsGenerated());
             Object[] row = {
                     campaign.getCampaignId(),
                     campaign.getCampaignName(),
@@ -1023,6 +1023,9 @@ public class CampaignManagerPanel extends JPanel {
                     JOptionPane.showMessageDialog(this, "Campaign deleted successfully", "Success",
                             JOptionPane.INFORMATION_MESSAGE);
                     loadCampaigns();
+                } else {
+                    JOptionPane.showMessageDialog(this, "Failed to delete campaign. It may still have dependent records.", "Error",
+                            JOptionPane.ERROR_MESSAGE);
                 }
             } catch (CampaignNotFoundException ex) {
                 JOptionPane.showMessageDialog(this, "Campaign not found: " + ex.getMessage(), "Error",
@@ -1089,41 +1092,63 @@ public class CampaignManagerPanel extends JPanel {
      * Insert initial campaign metrics data for a newly created campaign
      */
     private void insertCampaignMetrics(int campaignId, int impressions, int clicks, int conversions, double revenue) {
-        String sql = "INSERT INTO campaign_metrics (campaign_id, metric_date, impressions, clicks, conversions, revenue_generated) VALUES (?, ?, ?, ?, ?, ?)";
-        
-        try (java.sql.Connection conn = dbUtil.getConnection();
-             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
-            pstmt.setInt(1, campaignId);
-            pstmt.setDate(2, java.sql.Date.valueOf(LocalDate.now()));
-            pstmt.setInt(3, impressions);
-            pstmt.setInt(4, clicks);
-            pstmt.setInt(5, conversions);
-            pstmt.setDouble(6, revenue);
-            
-            pstmt.executeUpdate();
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) {
+                System.err.println("Marketing subsystem facade not available");
+                return;
+            }
+
+            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("campaign_id", campaignId);
+            payload.put("metric_date", LocalDate.now().toString());
+            payload.put("impressions", impressions);
+            payload.put("clicks", clicks);
+            payload.put("conversions", conversions);
+            payload.put("revenue_generated", revenue);
+
+            marketingSubsystem.getClass()
+                    .getMethod("create", String.class, java.util.Map.class)
+                    .invoke(marketingSubsystem, "campaign_metrics", payload);
+
             System.out.println("Campaign metrics inserted for campaign ID: " + campaignId);
-        } catch (java.sql.SQLException e) {
+        } catch (Exception e) {
             System.err.println("Failed to insert campaign metrics: " + e.getMessage());
         }
     }
 
     private CampaignMetricsSnapshot getLatestCampaignMetrics(int campaignId) {
-        String sql = "SELECT impressions, clicks, conversions, revenue_generated " +
-                "FROM campaign_metrics WHERE campaign_id = ? ORDER BY metric_date DESC, metric_id DESC LIMIT 1";
-        try (java.sql.Connection conn = dbUtil.getConnection();
-             java.sql.PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setInt(1, campaignId);
-            try (java.sql.ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) {
+                return new CampaignMetricsSnapshot(0, 0, 0, 0.0);
+            }
+
+            java.util.Map<String, Object> filters = new java.util.HashMap<>();
+            filters.put("campaign_id", campaignId);
+
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, Object>> rows =
+                    (java.util.List<java.util.Map<String, Object>>) marketingSubsystem.getClass()
+                            .getMethod("readAll", String.class, java.util.Map.class)
+                            .invoke(marketingSubsystem, "campaign_metrics", filters);
+
+            if (rows != null && !rows.isEmpty()) {
+                java.util.Map<String, Object> best = null;
+                for (java.util.Map<String, Object> row : rows) {
+                    if (best == null || isMetricRowNewer(row, best)) {
+                        best = row;
+                    }
+                }
+                if (best != null) {
                     return new CampaignMetricsSnapshot(
-                            rs.getInt("impressions"),
-                            rs.getInt("clicks"),
-                            rs.getInt("conversions"),
-                            rs.getDouble("revenue_generated"));
+                            asInt(best.get("impressions"), 0),
+                            asInt(best.get("clicks"), 0),
+                            asInt(best.get("conversions"), 0),
+                            asDouble(best.get("revenue_generated"), 0.0));
                 }
             }
-        } catch (java.sql.SQLException e) {
+        } catch (Exception e) {
             System.err.println("Failed to fetch campaign metrics: " + e.getMessage());
         }
         return new CampaignMetricsSnapshot(0, 0, 0, 0.0);
@@ -1131,23 +1156,101 @@ public class CampaignManagerPanel extends JPanel {
 
     private void upsertCampaignMetrics(int campaignId, int impressions, int clicks, int conversions, double revenue) {
         LocalDate metricDate = LocalDate.now();
-        String updateSql = "UPDATE campaign_metrics SET impressions = ?, clicks = ?, conversions = ?, revenue_generated = ? " +
-                "WHERE campaign_id = ? AND metric_date = ?";
-        try (java.sql.Connection conn = dbUtil.getConnection();
-             java.sql.PreparedStatement update = conn.prepareStatement(updateSql)) {
-            update.setInt(1, impressions);
-            update.setInt(2, clicks);
-            update.setInt(3, conversions);
-            update.setDouble(4, revenue);
-            update.setInt(5, campaignId);
-            update.setDate(6, java.sql.Date.valueOf(metricDate));
-            int affected = update.executeUpdate();
-            if (affected == 0) {
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) {
+                System.err.println("Marketing subsystem facade not available");
+                return;
+            }
+
+            java.util.Map<String, Object> filters = new java.util.HashMap<>();
+            filters.put("campaign_id", campaignId);
+
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, Object>> rows =
+                    (java.util.List<java.util.Map<String, Object>>) marketingSubsystem.getClass()
+                            .getMethod("readAll", String.class, java.util.Map.class)
+                            .invoke(marketingSubsystem, "campaign_metrics", filters);
+
+            MetricRowRef metricRef = findMetricRowForDate(rows, metricDate);
+            if (metricRef != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("impressions", impressions);
+                payload.put("clicks", clicks);
+                payload.put("conversions", conversions);
+                payload.put("revenue_generated", revenue);
+                marketingSubsystem.getClass()
+                        .getMethod("update", String.class, String.class, Object.class, java.util.Map.class)
+                        .invoke(marketingSubsystem, "campaign_metrics", metricRef.idColumn, metricRef.idValue, payload);
+            } else {
                 insertCampaignMetrics(campaignId, impressions, clicks, conversions, revenue);
             }
-        } catch (java.sql.SQLException e) {
+        } catch (Exception e) {
             System.err.println("Failed to upsert campaign metrics: " + e.getMessage());
         }
+    }
+
+    private MetricRowRef findMetricRowForDate(java.util.List<java.util.Map<String, Object>> rows, LocalDate metricDate) {
+        if (rows == null) {
+            return null;
+        }
+        String target = metricDate.toString();
+        for (java.util.Map<String, Object> row : rows) {
+            String rowDate = asDateString(row.get("metric_date"));
+            if (target.equals(rowDate)) {
+                if (asInt(row.get("metric_id"), -1) > 0) {
+                    return new MetricRowRef("metric_id", asInt(row.get("metric_id"), -1));
+                }
+                if (asInt(row.get("campaign_metric_id"), -1) > 0) {
+                    return new MetricRowRef("campaign_metric_id", asInt(row.get("campaign_metric_id"), -1));
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isMetricRowNewer(java.util.Map<String, Object> a, java.util.Map<String, Object> b) {
+        String da = asDateString(a.get("metric_date"));
+        String db = asDateString(b.get("metric_date"));
+        int dateCmp = da.compareTo(db);
+        if (dateCmp != 0) {
+            return dateCmp > 0;
+        }
+        return asInt(a.get("metric_id"), 0) > asInt(b.get("metric_id"), 0);
+    }
+
+    private String asDateString(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = value.toString();
+        return text.length() >= 10 ? text.substring(0, 10) : text;
+    }
+
+    private int asInt(Object value, int fallback) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private double asDouble(Object value, double fallback) {
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (value != null) {
+            try {
+                return Double.parseDouble(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
     }
 
     private static class CampaignMetricsSnapshot {
@@ -1161,6 +1264,16 @@ public class CampaignManagerPanel extends JPanel {
             this.clicks = clicks;
             this.conversions = conversions;
             this.revenue = revenue;
+        }
+    }
+
+    private static class MetricRowRef {
+        final String idColumn;
+        final int idValue;
+
+        MetricRowRef(String idColumn, int idValue) {
+            this.idColumn = idColumn;
+            this.idValue = idValue;
         }
     }
 

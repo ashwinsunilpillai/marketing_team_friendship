@@ -1,5 +1,8 @@
 # Integration Guide for Member 2 & 3
 
+> Note: This project now follows shared IntegrationDB facade usage only.
+> Do not use raw JDBC calls through DBUtil.
+
 ## For Member 2 (Email & CRM Integration)
 
 ### What You'll Use from Member 1
@@ -11,10 +14,10 @@
    import com.marketing.entity.Segment;
    ```
 
-2. **Database Utility** (for your own DB operations)
+2. **Database Utility** (for shared subsystem facade access)
    ```java
    import com.marketing.util.DBUtil;
-   Connection conn = DBUtil.getInstance().getConnection();
+   Object marketingSubsystem = DBUtil.getInstance().getMarketingSubsystem();
    ```
 
 3. **Available Facades** (reference implementation)
@@ -102,8 +105,8 @@ Implement Observer pattern for live updates when campaign metrics change.
 ### Database Connection
 All members use the same `DBUtil.getInstance()` singleton:
 ```java
-// This is thread-safe and reuses connections
-Connection conn = DBUtil.getInstance().getConnection();
+// This is thread-safe and provides the shared subsystem facade
+Object marketingSubsystem = DBUtil.getInstance().getMarketingSubsystem();
 ```
 
 ### Entity Objects

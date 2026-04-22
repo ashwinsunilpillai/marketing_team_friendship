@@ -3,10 +3,6 @@ package com.marketing.m3.analytics;
 import com.marketing.entity.Campaign;
 import com.marketing.util.DBUtil;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,7 +56,9 @@ public class AnalyticsEngine {
 
             int impressions = Math.max(0, agg != null ? agg.impressions : campaign.getImpressions());
             int clicks = Math.max(0, agg != null ? agg.clicks : campaign.getClicks());
-            int conversions = Math.max(0, agg != null ? agg.conversions : campaign.getConversions());
+            int conversionsFromMetrics = Math.max(0, agg != null ? agg.conversions : 0);
+            int conversionsFromCampaign = Math.max(0, campaign.getLeadsGenerated());
+            int conversions = Math.max(conversionsFromMetrics, conversionsFromCampaign);
             double revenue = Math.max(0.0, agg != null ? agg.revenue : 0.0);
 
             double budget = campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget();
@@ -105,22 +103,37 @@ public class AnalyticsEngine {
 
     private Map<Integer, MetricsAggregate> fetchMetricsAggregates() {
         Map<Integer, MetricsAggregate> data = new HashMap<>();
-        String sql = "SELECT campaign_id, SUM(impressions) AS total_impressions, SUM(clicks) AS total_clicks, " +
-                "SUM(conversions) AS total_conversions, SUM(revenue_generated) AS total_revenue " +
-                "FROM campaign_metrics GROUP BY campaign_id";
-
-        try (Connection conn = DBUtil.getInstance().getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                int campaignId = rs.getInt("campaign_id");
-                data.put(campaignId, new MetricsAggregate(
-                        rs.getInt("total_impressions"),
-                        rs.getInt("total_clicks"),
-                        rs.getInt("total_conversions"),
-                        rs.getDouble("total_revenue")));
+        try {
+            Object marketingSubsystem = DBUtil.getInstance().getMarketingSubsystem();
+            if (marketingSubsystem == null) {
+                return data;
             }
-        } catch (SQLException ignore) {
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) marketingSubsystem.getClass()
+                    .getMethod("readAll", String.class, Map.class)
+                    .invoke(marketingSubsystem, "campaign_metrics", new HashMap<>());
+
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    int campaignId = asInt(row.get("campaign_id"), 0);
+                    if (campaignId <= 0) {
+                        continue;
+                    }
+
+                    MetricsAggregate existing = data.get(campaignId);
+                    if (existing == null) {
+                        existing = new MetricsAggregate(0, 0, 0, 0.0);
+                        data.put(campaignId, existing);
+                    }
+
+                    existing.impressions += asInt(row.get("impressions"), 0);
+                    existing.clicks += asInt(row.get("clicks"), 0);
+                    existing.conversions += asInt(row.get("conversions"), 0);
+                    existing.revenue += asDouble(row.get("revenue_generated"), 0.0);
+                }
+            }
+        } catch (Exception ignore) {
             // Keep dashboard functional even if metrics table is unavailable.
         }
 
@@ -128,10 +141,10 @@ public class AnalyticsEngine {
     }
 
     private static class MetricsAggregate {
-        final int impressions;
-        final int clicks;
-        final int conversions;
-        final double revenue;
+        int impressions;
+        int clicks;
+        int conversions;
+        double revenue;
 
         MetricsAggregate(int impressions, int clicks, int conversions, double revenue) {
             this.impressions = impressions;
@@ -139,5 +152,31 @@ public class AnalyticsEngine {
             this.conversions = conversions;
             this.revenue = revenue;
         }
+    }
+
+    private int asInt(Object value, int fallback) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private double asDouble(Object value, double fallback) {
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (value != null) {
+            try {
+                return Double.parseDouble(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
     }
 }

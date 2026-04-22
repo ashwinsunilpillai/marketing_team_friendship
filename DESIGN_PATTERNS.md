@@ -8,7 +8,7 @@ This document explains the design patterns used in Member 1's code and how Membe
 
 ### Used In: `DBUtil.java`
 
-**Purpose:** Ensure only one database connection manager exists throughout the application.
+**Purpose:** Ensure only one shared ERP facade manager exists throughout the application.
 
 **Implementation:**
 ```java
@@ -29,7 +29,7 @@ public class DBUtil {
 **Usage:**
 ```java
 // Anywhere in your code
-Connection conn = DBUtil.getInstance().getConnection();
+Object marketingSubsystem = DBUtil.getInstance().getMarketingSubsystem();
 ```
 
 **Key Points:**
@@ -109,12 +109,9 @@ public class CampaignFacade {
     
     public boolean createCampaign(Campaign campaign) 
             throws CampaignCreationException {
-        // Complex JDBC logic hidden here
-        String sql = "INSERT INTO campaigns ...";
-        try (Connection conn = dbUtil.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            // Execute
-        }
+        // Complex subsystem facade calls hidden here
+        Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+        // create/read/update/delete calls go through shared facade
     }
 }
 ```
@@ -126,7 +123,7 @@ facade.createCampaign(newCampaign); // Simple interface
 ```
 
 **Key Points:**
-- Hides complexity of JDBC operations
+- Hides complexity of shared facade operations
 - One facade per major entity
 - Try-with-resources for resource management
 - Clear exception handling

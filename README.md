@@ -14,7 +14,7 @@ This is Member 1's implementation of the Marketing ERP subsystem for a group pro
 - **Factory Method (SegmentFactory)** - Creates different segment types (CITY, AGE_GROUP, INTEREST)
 
 ### Structural Patterns
-- **Facade (CampaignFacade, SegmentManager)** - Simplifies JDBC operations into unified interfaces
+- **Facade (CampaignFacade, SegmentManager)** - Simplifies subsystem data operations into unified interfaces
 
 ### GRASP Principles Applied
 - **Information Expert** - Entity classes and Facade classes know their own data
@@ -58,36 +58,33 @@ schema.sql                              # Database schema initialization
 
 ## Setup Instructions
 
-### 1. Database Setup
-1. Install MySQL Server 5.7+ or MySQL 8.0
-2. Create the database and schema:
-   ```bash
-   mysql -u root -p < schema.sql
-   ```
-3. Default credentials in DBUtil.java:
-   - URL: `jdbc:mysql://localhost:3306/marketing_erp`
-   - User: `root`
-   - Password: `password`
-   
-   **Note:** Update DBUtil.java with your actual MySQL credentials if different.
+This project now follows the IntegrationDB handoff workflow in `IntegrationDB/README_FOR_OTHER_TEAMS.md`.
 
-### 2. Compile the Project
-```bash
-javac -d bin -cp ".:mysql-connector-j-9.6.0.jar" src/com/marketing/**/*.java
+### 1. Configure Database Properties
+1. Ensure local MySQL 8+ is running.
+2. Keep `database.properties` in the project root.
+3. Set local credentials and keep `db.name=erp_subsystem`.
+
+### 2. Compile the Project (PowerShell)
+```powershell
+$compileCp = ".;IntegrationDB\local-database-module-1.0.0.jar;IntegrationDB\lib\mysql-connector-j-9.3.0.jar;IntegrationDB\lib\slf4j-api-2.0.17.jar;IntegrationDB\lib\slf4j-simple-2.0.17.jar"
+$files = Get-ChildItem -Path .\src -Recurse -Filter "*.java"
+javac -cp $compileCp -d bin $files.FullName
 ```
 
-### 3. Run the Application
-```bash
-java -cp "bin:mysql-connector-j-9.6.0.jar" com.marketing.ui.MarketingERP
+### 3. Run the Application (PowerShell)
+```powershell
+$runCp = ".;bin;IntegrationDB\local-database-module-1.0.0.jar;IntegrationDB\lib\mysql-connector-j-9.3.0.jar;IntegrationDB\lib\slf4j-api-2.0.17.jar;IntegrationDB\lib\slf4j-simple-2.0.17.jar"
+java -cp $runCp com.marketing.ui.MarketingERP
 ```
 
 ## Key Classes
 
 ### DBUtil (Singleton)
-- **Purpose**: Manages a single database connection
+- **Purpose**: Provides access to shared ERP facade and subsystem facade entry points
 - **Methods**:
   - `getInstance()` - Get singleton instance
-  - `getConnection()` - Get active connection
+   - `getMarketingSubsystem()` - Get shared marketing subsystem facade
   - `closeConnection()` - Close connection
 
 ### Entity Classes

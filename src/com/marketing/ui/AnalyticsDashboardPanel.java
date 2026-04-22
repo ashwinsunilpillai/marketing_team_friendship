@@ -325,10 +325,14 @@ public class AnalyticsDashboardPanel extends JPanel implements AnalyticsObserver
      */
     private void startAutoRefresh() {
         isAutoRefreshActive = true;
-        autoRefreshToggleButton.setText("Stop Auto-Refresh");
-        autoRefreshToggleButton.setBackground(new Color(244, 67, 54)); // Red
-        autoRefreshStatusLabel.setText("Auto-refresh: ON (30s)");
-        autoRefreshStatusLabel.setForeground(new Color(76, 175, 80)); // Green
+        if (autoRefreshToggleButton != null) {
+            autoRefreshToggleButton.setText("Stop Auto-Refresh");
+            autoRefreshToggleButton.setBackground(new Color(244, 67, 54)); // Red
+        }
+        if (autoRefreshStatusLabel != null) {
+            autoRefreshStatusLabel.setText("Auto-refresh: ON (30s)");
+            autoRefreshStatusLabel.setForeground(new Color(76, 175, 80)); // Green
+        }
 
         autoRefreshTimer = new Timer(AUTO_REFRESH_INTERVAL, e -> refreshAnalytics());
         autoRefreshTimer.start();
@@ -343,10 +347,14 @@ public class AnalyticsDashboardPanel extends JPanel implements AnalyticsObserver
             autoRefreshTimer.stop();
             autoRefreshTimer = null;
         }
-        autoRefreshToggleButton.setText("Start Auto-Refresh");
-        autoRefreshToggleButton.setBackground(new Color(76, 175, 80)); // Green
-        autoRefreshStatusLabel.setText("Auto-refresh: OFF");
-        autoRefreshStatusLabel.setForeground(new Color(120, 130, 140)); // Gray
+        if (autoRefreshToggleButton != null) {
+            autoRefreshToggleButton.setText("Start Auto-Refresh");
+            autoRefreshToggleButton.setBackground(new Color(76, 175, 80)); // Green
+        }
+        if (autoRefreshStatusLabel != null) {
+            autoRefreshStatusLabel.setText("Auto-refresh: OFF");
+            autoRefreshStatusLabel.setForeground(new Color(120, 130, 140)); // Gray
+        }
     }
 
     /**

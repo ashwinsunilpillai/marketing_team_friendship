@@ -2,13 +2,6 @@ package com.marketing.util;
 
 import com.likeseca.erp.database.facade.ErpDatabaseFacade;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.Properties;
-
 public class DBUtil {
     private static DBUtil instance;
     private ErpDatabaseFacade erpDatabaseFacade;
@@ -38,22 +31,8 @@ public class DBUtil {
         return erpDatabaseFacade != null ? erpDatabaseFacade.marketingSubsystem() : null;
     }
 
-    // Backward-compatible JDBC accessor for legacy code paths still using Connection.
-    public Connection getConnection() {
-        Properties props = new Properties();
-        try (FileInputStream fis = new FileInputStream("database.properties")) {
-            props.load(fis);
-            String host = props.getProperty("db.host", "127.0.0.1");
-            String port = props.getProperty("db.port", "3306");
-            String dbName = props.getProperty("db.name", "erp_subsystem");
-            String user = props.getProperty("db.username", "root");
-            String password = props.getProperty("db.password", "");
-            String url = "jdbc:mysql://" + host + ":" + port + "/" + dbName;
-            return DriverManager.getConnection(url, user, password);
-        } catch (IOException | SQLException e) {
-            System.err.println("Error creating JDBC connection: " + e.getMessage());
-            return null;
-        }
+    public Object getDatabaseIntegrationSubsystem() {
+        return erpDatabaseFacade != null ? erpDatabaseFacade.databaseIntegrationSubsystem() : null;
     }
 
     public void closeConnection() {

@@ -15,7 +15,6 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
-import java.sql.*;
 import java.util.*;
 
 /**
@@ -402,28 +401,63 @@ public class AnalyticsPanel extends JPanel {
      */
     private Map<Integer, CampaignMetrics> fetchCampaignMetrics() {
         Map<Integer, CampaignMetrics> metricsMap = new HashMap<>();
-        String sql = "SELECT campaign_id, SUM(impressions) as total_impressions, SUM(clicks) as total_clicks, " +
-                     "SUM(conversions) as total_conversions, SUM(revenue_generated) as total_revenue " +
-                     "FROM campaign_metrics GROUP BY campaign_id";
-        
-        try (Connection conn = dbUtil.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            
-            while (rs.next()) {
-                int campaignId = rs.getInt("campaign_id");
-                int impressions = rs.getInt("total_impressions");
-                int clicks = rs.getInt("total_clicks");
-                int conversions = rs.getInt("total_conversions");
-                double revenue = rs.getDouble("total_revenue");
-                
-                metricsMap.put(campaignId, new CampaignMetrics(impressions, clicks, conversions, revenue));
+        try {
+            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
+            if (marketingSubsystem == null) {
+                return metricsMap;
             }
-        } catch (SQLException e) {
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) marketingSubsystem.getClass()
+                    .getMethod("readAll", String.class, Map.class)
+                    .invoke(marketingSubsystem, "campaign_metrics", new HashMap<>());
+
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    int campaignId = asInt(row.get("campaign_id"), 0);
+                    if (campaignId <= 0) {
+                        continue;
+                    }
+
+                    CampaignMetrics current = metricsMap.getOrDefault(campaignId, new CampaignMetrics(0, 0, 0, 0));
+                    current.impressions += asInt(row.get("impressions"), 0);
+                    current.clicks += asInt(row.get("clicks"), 0);
+                    current.conversions += asInt(row.get("conversions"), 0);
+                    current.revenue += asDouble(row.get("revenue_generated"), 0.0);
+                    metricsMap.put(campaignId, current);
+                }
+            }
+        } catch (Exception e) {
             System.err.println("Error fetching campaign metrics: " + e.getMessage());
         }
         
         return metricsMap;
+    }
+
+    private int asInt(Object value, int fallback) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
+    }
+
+    private double asDouble(Object value, double fallback) {
+        if (value instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (value != null) {
+            try {
+                return Double.parseDouble(value.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return fallback;
     }
     
     /**
