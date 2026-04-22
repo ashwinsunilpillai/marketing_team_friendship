@@ -11,10 +11,13 @@ CREATE TABLE IF NOT EXISTS campaigns (
     target_vehicle_segment VARCHAR(100),
     campaign_budget DECIMAL(15, 2),
     target_leads JSON,
+    lead_target INT DEFAULT 100,
+    leads_generated INT DEFAULT 0,
     start_date DATE,
     end_date DATE,
     campaign_roi DECIMAL(10, 2),
     campaign_results JSON,
+    status VARCHAR(30) DEFAULT 'PLANNED',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -48,7 +51,8 @@ CREATE TABLE IF NOT EXISTS customer_segments (
 );
 
 -- Segments View (compatibility view over customer_segments)
-CREATE OR REPLACE VIEW segments AS
+DROP VIEW IF EXISTS segments;
+CREATE VIEW segments AS
 SELECT 
     segment_id,
     segment_name AS name,
@@ -160,9 +164,9 @@ INSERT INTO message_templates (template_name, channel, subject_template, body_te
 ('Campaign Announcement', 'EMAIL', 'New Campaign: {{campaign_title}}', 'Check out our latest campaign: {{campaign_title}}'),
 ('Promotional SMS', 'SMS', '', 'Hi {{name}}, enjoy {{discount}}% off on your next purchase!');
 
-INSERT INTO campaigns (campaign_title, campaign_type, target_vehicle_segment, campaign_budget, target_leads, start_date, end_date, campaign_roi, campaign_results) VALUES
-('Summer Electric Vehicle Campaign', 'EMAIL', 'electric', 50000, JSON_OBJECT('target', 500, 'region', 'Bangalore'), '2026-04-15', '2026-05-15', 2.5, JSON_OBJECT('leads_generated', 450, 'conversions', 85)),
-('Spring Luxury Segment', 'MULTI_CHANNEL', 'luxury', 75000, JSON_OBJECT('target', 300, 'region', 'Delhi'), '2026-04-01', '2026-04-30', 3.2, JSON_OBJECT('leads_generated', 275, 'conversions', 60));
+INSERT INTO campaigns (campaign_title, campaign_type, target_vehicle_segment, campaign_budget, target_leads, start_date, end_date, campaign_roi, campaign_results, lead_target, leads_generated) VALUES
+('Summer Electric Vehicle Campaign', 'EMAIL', 'electric', 50000, JSON_OBJECT('target', 500, 'region', 'Bangalore'), '2026-04-15', '2026-05-15', 2.5, JSON_OBJECT('leads_generated', 450, 'conversions', 85), 500, 450),
+('Spring Luxury Segment', 'MULTI_CHANNEL', 'luxury', 75000, JSON_OBJECT('target', 300, 'region', 'Delhi'), '2026-04-01', '2026-04-30', 3.2, JSON_OBJECT('leads_generated', 275, 'conversions', 60), 300, 275);
 
 INSERT INTO campaign_messages (campaign_id, customer_id, template_id, channel, delivery_status, sent_at, delivered_at, opened_at, clicked_at) VALUES
 (1, 1, 2, 'EMAIL', 'DELIVERED', '2026-04-15 10:00:00', '2026-04-15 10:05:00', '2026-04-15 10:30:00', '2026-04-15 11:00:00'),

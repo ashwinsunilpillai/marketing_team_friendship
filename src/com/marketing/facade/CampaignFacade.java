@@ -6,6 +6,7 @@ import com.marketing.exception.CampaignNotFoundException;
 import com.marketing.exception.CampaignStateException;
 import com.marketing.util.DBUtil;
 
+import java.sql.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,53 +32,65 @@ public class CampaignFacade {
         }
 
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) {
-                throw new CampaignCreationException("Marketing subsystem facade not available");
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                throw new CampaignCreationException("Database connection not available");
             }
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("campaign_title", title);
-            payload.put("campaign_type", campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL");
-            payload.put("target_vehicle_segment", campaign.getTargetVehicleSegment());
-            payload.put("campaign_budget", campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget());
-            payload.put("target_leads", campaign.getTargetLeads());
-            if (campaign.getStartDate() != null) payload.put("start_date", campaign.getStartDate());
-            if (campaign.getEndDate() != null) payload.put("end_date", campaign.getEndDate());
-            payload.put("campaign_roi", campaign.getCampaignRoi());
-            payload.put("campaign_results", campaign.getCampaignResults());
-            payload.put("lead_target", campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100);
-            payload.put("leads_generated", campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 0);
-
-            marketingSubsystem.getClass().getMethod("create", String.class, Map.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, payload);
-            return true;
+            String sql = "INSERT INTO campaigns (campaign_title, campaign_type, target_vehicle_segment, " +
+                    "campaign_budget, target_leads, lead_target, leads_generated, start_date, end_date, campaign_roi, campaign_results) " +
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, title);
+                pstmt.setString(2, campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL");
+                pstmt.setString(3, campaign.getTargetVehicleSegment());
+                pstmt.setDouble(4, campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget());
+                pstmt.setString(5, campaign.getTargetLeads());
+                pstmt.setInt(6, campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100);
+                pstmt.setInt(7, campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 0);
+                pstmt.setDate(8, campaign.getStartDate() != null ? Date.valueOf(campaign.getStartDate()) : null);
+                pstmt.setDate(9, campaign.getEndDate() != null ? Date.valueOf(campaign.getEndDate()) : null);
+                pstmt.setDouble(10, campaign.getCampaignRoi());
+                pstmt.setString(11, campaign.getCampaignResults());
+                
+                pstmt.executeUpdate();
+                System.out.println("Campaign created successfully: " + title);
+                return true;
+            }
         } catch (CampaignCreationException e) {
             throw e;
         } catch (Exception e) {
+            System.err.println("Failed to create campaign: " + e.getMessage());
+            e.printStackTrace();
             throw new CampaignCreationException("Failed to create campaign: " + e.getMessage(), e);
         }
     }
 
     public Campaign getCampaignById(int campaignId) throws CampaignNotFoundException {
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) {
-                throw new CampaignNotFoundException("Marketing subsystem facade not available");
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                throw new CampaignNotFoundException("Database connection not available");
             }
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> row = (Map<String, Object>) marketingSubsystem.getClass()
-                    .getMethod("readById", String.class, String.class, Object.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, ID_COLUMN, campaignId);
-
-            if (row == null || row.isEmpty()) {
-                throw new CampaignNotFoundException("Campaign with ID " + campaignId + " not found");
+            String sql = "SELECT * FROM campaigns WHERE campaign_id=?";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setInt(1, campaignId);
+                
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        return mapResultSetToEntity(rs);
+                    } else {
+                        throw new CampaignNotFoundException("Campaign with ID " + campaignId + " not found");
+                    }
+                }
             }
-            return mapToEntity(row);
         } catch (CampaignNotFoundException e) {
             throw e;
         } catch (Exception e) {
+            System.err.println("Error retrieving campaign: " + e.getMessage());
+            e.printStackTrace();
             throw new CampaignNotFoundException("Error retrieving campaign: " + e.getMessage(), e);
         }
     }
@@ -85,23 +98,60 @@ public class CampaignFacade {
     public List<Campaign> getAllCampaigns() {
         List<Campaign> campaigns = new ArrayList<>();
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) return campaigns;
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                System.err.println("Database connection not available");
+                return campaigns;
+            }
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> rows = (List<Map<String, Object>>) marketingSubsystem.getClass()
-                    .getMethod("readAll", String.class, Map.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, new HashMap<>());
-
-            if (rows != null) {
-                for (Map<String, Object> row : rows) {
-                    campaigns.add(mapToEntity(row));
+            String sql = "SELECT * FROM campaigns ORDER BY campaign_id DESC";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                
+                while (rs.next()) {
+                    campaigns.add(mapResultSetToEntity(rs));
                 }
             }
         } catch (Exception e) {
             System.err.println("Error retrieving campaigns: " + e.getMessage());
+            e.printStackTrace();
         }
         return campaigns;
+    }
+
+    private Campaign mapResultSetToEntity(ResultSet rs) throws SQLException {
+        Campaign campaign = new Campaign();
+        campaign.setCampaignId(rs.getInt("campaign_id"));
+        campaign.setCampaignTitle(rs.getString("campaign_title"));
+        campaign.setCampaignName(rs.getString("campaign_title"));
+        campaign.setCampaignType(rs.getString("campaign_type"));
+        campaign.setTargetVehicleSegment(rs.getString("target_vehicle_segment"));
+        campaign.setCampaignBudget(rs.getDouble("campaign_budget"));
+        campaign.setBudget(rs.getDouble("campaign_budget"));
+        campaign.setTargetLeads(rs.getString("target_leads"));
+        
+        // Read lead target and leads generated
+        campaign.setLeadTarget(rs.getInt("lead_target"));
+        campaign.setLeadsGenerated(rs.getInt("leads_generated"));
+        
+        Date startDate = rs.getDate("start_date");
+        if (startDate != null) {
+            campaign.setStartDate(startDate.toLocalDate());
+        }
+        
+        Date endDate = rs.getDate("end_date");
+        if (endDate != null) {
+            campaign.setEndDate(endDate.toLocalDate());
+        }
+        
+        campaign.setCampaignRoi(rs.getDouble("campaign_roi"));
+        campaign.setCampaignResults(rs.getString("campaign_results"));
+        
+        // Read status from database, default to ACTIVE if not found
+        String status = rs.getString("status");
+        campaign.setStatus(status != null ? status : "ACTIVE");
+        
+        return campaign;
     }
 
     public boolean updateCampaign(Campaign campaign) throws CampaignNotFoundException, CampaignStateException {
@@ -110,44 +160,62 @@ public class CampaignFacade {
         }
 
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) {
-                throw new CampaignStateException("Marketing subsystem facade not available");
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                throw new CampaignStateException("Database connection not available");
             }
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("campaign_title", campaign.getCampaignTitle() != null ? campaign.getCampaignTitle() : campaign.getCampaignName());
-            payload.put("campaign_budget", campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget());
-            payload.put("lead_target", campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100);
-            payload.put("leads_generated", campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 0);
-            payload.put("campaign_type", campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL");
-            if (campaign.getStartDate() != null) payload.put("start_date", campaign.getStartDate());
-            if (campaign.getEndDate() != null) payload.put("end_date", campaign.getEndDate());
-
-            marketingSubsystem.getClass().getMethod("update", String.class, String.class, Object.class, Map.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, ID_COLUMN, campaign.getCampaignId(), payload);
-            return true;
+            String sql = "UPDATE campaigns SET campaign_title=?, campaign_budget=?, campaign_type=?, " +
+                    "lead_target=?, leads_generated=?, start_date=?, end_date=? WHERE campaign_id=?";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, campaign.getCampaignTitle() != null ? campaign.getCampaignTitle() : campaign.getCampaignName());
+                pstmt.setDouble(2, campaign.getCampaignBudget() > 0 ? campaign.getCampaignBudget() : campaign.getBudget());
+                pstmt.setString(3, campaign.getCampaignType() != null ? campaign.getCampaignType() : "EMAIL");
+                pstmt.setInt(4, campaign.getLeadTarget() > 0 ? campaign.getLeadTarget() : 100);
+                pstmt.setInt(5, campaign.getLeadsGenerated() > 0 ? campaign.getLeadsGenerated() : 0);
+                pstmt.setDate(6, campaign.getStartDate() != null ? Date.valueOf(campaign.getStartDate()) : null);
+                pstmt.setDate(7, campaign.getEndDate() != null ? Date.valueOf(campaign.getEndDate()) : null);
+                pstmt.setInt(8, campaign.getCampaignId());
+                
+                pstmt.executeUpdate();
+                System.out.println("Campaign updated successfully: ID " + campaign.getCampaignId());
+                return true;
+            }
         } catch (CampaignStateException e) {
             throw e;
         } catch (Exception e) {
+            System.err.println("Error updating campaign: " + e.getMessage());
+            e.printStackTrace();
             throw new CampaignStateException("Error updating campaign: " + e.getMessage(), e);
         }
     }
 
     public boolean deleteCampaign(int campaignId) throws CampaignNotFoundException {
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) {
-                throw new CampaignNotFoundException("Marketing subsystem facade not available");
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                throw new CampaignNotFoundException("Database connection not available");
             }
 
-            marketingSubsystem.getClass().getMethod("delete", String.class, String.class, Object.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, ID_COLUMN, campaignId);
-            return true;
+            String sql = "DELETE FROM campaigns WHERE campaign_id=?";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setInt(1, campaignId);
+                
+                int rowsAffected = pstmt.executeUpdate();
+                if (rowsAffected > 0) {
+                    System.out.println("Campaign deleted successfully: ID " + campaignId);
+                    return true;
+                } else {
+                    throw new CampaignNotFoundException("Campaign with ID " + campaignId + " not found");
+                }
+            }
         } catch (CampaignNotFoundException e) {
             throw e;
         } catch (Exception e) {
             System.err.println("Error deleting campaign: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
@@ -185,54 +253,32 @@ public class CampaignFacade {
         }
 
         try {
-            Object marketingSubsystem = dbUtil.getMarketingSubsystem();
-            if (marketingSubsystem == null) {
-                throw new CampaignStateException("Marketing subsystem facade not available");
+            Connection conn = dbUtil.getConnection();
+            if (conn == null) {
+                throw new CampaignStateException("Database connection not available");
             }
 
-            Map<String, Object> payload = new HashMap<>();
-            if (campaign.getStartDate() != null) payload.put("start_date", campaign.getStartDate());
-            if (campaign.getEndDate() != null) payload.put("end_date", campaign.getEndDate());
-
-            // Integration permissions may block status writes for marketing subsystem.
-            // Persist date changes only and keep status transition validated at facade level.
-            if (payload.isEmpty()) {
+            String sql = "UPDATE campaigns SET status=?, start_date=?, end_date=? WHERE campaign_id=?";
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, newStatus);
+                pstmt.setDate(2, campaign.getStartDate() != null ? Date.valueOf(campaign.getStartDate()) : null);
+                pstmt.setDate(3, campaign.getEndDate() != null ? Date.valueOf(campaign.getEndDate()) : null);
+                pstmt.setInt(4, campaignId);
+                
+                pstmt.executeUpdate();
+                System.out.println("Campaign status updated: ID " + campaignId + " -> " + newStatus);
                 return true;
             }
-
-            marketingSubsystem.getClass().getMethod("update", String.class, String.class, Object.class, Map.class)
-                    .invoke(marketingSubsystem, TABLE_NAME, ID_COLUMN, campaignId, payload);
-            return true;
         } catch (CampaignStateException e) {
             throw e;
         } catch (Exception e) {
+            System.err.println("Error updating campaign status: " + e.getMessage());
+            e.printStackTrace();
             throw new CampaignStateException("Error updating campaign status: " + e.getMessage(), e);
         }
     }
 
     private boolean isValidStatus(String status) {
         return "ACTIVE".equals(status) || "PAUSED".equals(status) || "COMPLETED".equals(status) || "PLANNED".equals(status);
-    }
-
-    private Campaign mapToEntity(Map<String, Object> row) {
-        Campaign campaign = new Campaign();
-        if (row.get("campaign_id") instanceof Number n) campaign.setCampaignId(n.intValue());
-        campaign.setCampaignTitle((String) (row.containsKey("campaign_title") ? row.get("campaign_title") : row.get("campaign_name")));
-        campaign.setTargetVehicleSegment((String) row.get("target_vehicle_segment"));
-        if (row.get("campaign_budget") instanceof Number n) campaign.setCampaignBudget(n.doubleValue());
-        if (row.get("budget") instanceof Number n) campaign.setCampaignBudget(n.doubleValue());
-        campaign.setTargetLeads((String) row.get("target_leads"));
-        campaign.setCampaignResults((String) row.get("campaign_results"));
-        String status = (String) row.get("status");
-        campaign.setStatus(status != null ? status : "PLANNED");
-        campaign.setDescription((String) row.get("description"));
-        if (row.get("segment_id") instanceof Number n) campaign.setSegmentId(n.intValue());
-        if (row.get("impressions") instanceof Number n) campaign.setImpressions(n.intValue());
-        if (row.get("clicks") instanceof Number n) campaign.setClicks(n.intValue());
-        if (row.get("conversions") instanceof Number n) campaign.setConversions(n.intValue());
-        if (row.get("lead_target") instanceof Number n) campaign.setLeadTarget(n.intValue());
-        if (row.get("leads_generated") instanceof Number n) campaign.setLeadsGenerated(n.intValue());
-        campaign.setCampaignType((String) row.get("campaign_type"));
-        return campaign;
     }
 }

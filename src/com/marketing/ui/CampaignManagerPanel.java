@@ -556,6 +556,11 @@ public class CampaignManagerPanel extends JPanel {
         JTextField leadTargetField = new JTextField("0");
         fieldsPanel.add(leadTargetField);
 
+        // Leads Generated
+        fieldsPanel.add(createLabel("Leads Generated:"));
+        JTextField leadsGeneratedField = new JTextField("0");
+        fieldsPanel.add(leadsGeneratedField);
+
         // Channel
         fieldsPanel.add(createLabel("Channel:"));
         JTextField channelField = new JTextField();
@@ -660,8 +665,13 @@ public class CampaignManagerPanel extends JPanel {
                     campaign.setLeadTarget(100); // Default to 100 if invalid
                 }
 
-                // Set leads generated (default to 45)
-                campaign.setLeadsGenerated(45);
+                // Set leads generated
+                try {
+                    int leadsGenerated = Integer.parseInt(leadsGeneratedField.getText().trim());
+                    campaign.setLeadsGenerated(leadsGenerated >= 0 ? leadsGenerated : 0);
+                } catch (NumberFormatException ex) {
+                    campaign.setLeadsGenerated(0); // Default to 0 if invalid
+                }
 
                 // Save campaign
                 if (campaignFacade.createCampaign(campaign)) {
@@ -823,6 +833,10 @@ public class CampaignManagerPanel extends JPanel {
         JTextField leadTargetField = new JTextField(String.valueOf(campaign.getLeadTarget()));
         fieldsPanel.add(leadTargetField);
 
+        fieldsPanel.add(createLabel("Leads Generated:"));
+        JTextField leadsGeneratedField = new JTextField(String.valueOf(campaign.getLeadsGenerated()));
+        fieldsPanel.add(leadsGeneratedField);
+
         fieldsPanel.add(createLabel("Channel:"));
         JTextField channelField = new JTextField(campaign.getCampaignType());
         fieldsPanel.add(channelField);
@@ -928,6 +942,13 @@ public class CampaignManagerPanel extends JPanel {
                 try {
                     int lt = Integer.parseInt(leadTargetField.getText().trim());
                     campaign.setLeadTarget(lt > 0 ? lt : campaign.getLeadTarget());
+                } catch (NumberFormatException ex) {
+                    // ignore
+                }
+
+                try {
+                    int lg = Integer.parseInt(leadsGeneratedField.getText().trim());
+                    campaign.setLeadsGenerated(lg >= 0 ? lg : campaign.getLeadsGenerated());
                 } catch (NumberFormatException ex) {
                     // ignore
                 }
